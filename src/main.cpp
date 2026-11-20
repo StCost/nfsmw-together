@@ -248,6 +248,18 @@ namespace {
                 LOG("Co-op: off - the other player is still in the prologue");
             }
             if (!st.connected) toldPeer = false;
+            // say when it changes: off -> on (both past the prologue) and on -> off
+            static int lastLinked = -1;
+            int nowLinked = st.connected ? (linked ? 1 : 0) : -1;
+            if (nowLinked != lastLinked) {
+                if (nowLinked == 1 && lastLinked == 0) {
+                    Toast("Co-op on - " + (st.peerName.empty() ? std::string("the other player") : st.peerName) + " is in your world now");
+                    LOG("Co-op: on - both players are past the prologue");
+                } else if (nowLinked == 0) {
+                    LOG("Co-op: off (%s)", !g_coopHere ? "this profile is in the prologue" : "the other player is in the prologue");
+                }
+                lastLinked = nowLinked;
+            }
             g_coopStatus = !st.connected ? "" : !g_coopHere ? "off - finish the prologue first" : !peerAllowed ? "off - the other player is in the prologue" : "";
         }
         { Perf::Scope perfGhost(Perf::Ghost);
