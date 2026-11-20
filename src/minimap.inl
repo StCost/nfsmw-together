@@ -13,6 +13,20 @@
 namespace {
     constexpr uintptr_t MinimapRacersCall = 0x59DD04, MinimapRacersFn = 0x57A110;
 
+    // The other player's blip in the colour they picked ([Player] Color on their PC); the 8 icon slots
+    // are shared with AI racers, so every other use of a slot gets the slot's own colour back.
+    void* g_slotIcon[8] = {}; uint32_t g_slotOrig[8] = {};
+    void PaintSlot(int slot, void* icon, bool isPeer) {
+        if (g_slotIcon[slot] != icon) {                     // first sight of this icon: remember its colour
+            int c[4] = {};
+            ((int* (__cdecl*)(int*, void*))0x515830)(c, icon);                      // FEngGetColor
+            g_slotOrig[slot] = ((uint32_t(__thiscall*)(int*))0x5B2D80)(c);         // FEColor -> ARGB
+            g_slotIcon[slot] = icon;
+        }
+        uint32_t want = (isPeer && Net::Stats().peerColor) ? Net::Stats().peerColor : g_slotOrig[slot];
+        ((void(__cdecl*)(void*, uint32_t))0x5157E0)(icon, want);                    // FEngSetColor
+    }
+
     void __fastcall hk_MinimapRacers(void* minimap, void*) {
         int slot = 0;
         const int lists[2] = { (int)VL_AIRACERS, 7 /*REMOTE*/ };
@@ -30,6 +44,7 @@ namespace {
                 void* icon = *(void**)((uint8_t*)minimap + 0xF0 + slot * 4);
                 if (!icon) continue;
                 ((void(__thiscall*)(void*, float*, float*, void*, bool))0x5675D0)(minimap, pos, dir, icon, list == 7);
+                PaintSlot(slot, icon, iv == g_ghost);
                 ++slot;
             }
         }
@@ -53,6 +68,7 @@ namespace {
                 float pos[2], dir[2];
                 ((void(__cdecl*)(float*, float*, void*))0x579840)(pos, dir, sim);
                 ((void(__thiscall*)(void*, float*, float*, void*, bool))0x5675D0)(minimap, pos, dir, icon, true);
+                PaintSlot(slot, icon, true);
                 ++slot;
             }
         }

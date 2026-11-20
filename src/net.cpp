@@ -102,6 +102,10 @@ namespace {
         FillHeader(p.h, PKT_HELLO);
         strncpy_s(p.name, 16, g_cfg.playerName.c_str(), _TRUNCATE);
         uint32_t id = InstanceId(); memcpy(p.name + 20, &id, 4);
+        if (g_cfg.playerColor) {    // bytes 16..19 (after the 15-character name): R, G, B, marker 0xC0
+            p.name[16] = (char)((g_cfg.playerColor >> 16) & 0xFF); p.name[17] = (char)((g_cfg.playerColor >> 8) & 0xFF);
+            p.name[18] = (char)(g_cfg.playerColor & 0xFF); p.name[19] = (char)0xC0;
+        }
         SendRaw(&p, sizeof(p));
     }
 
@@ -169,7 +173,10 @@ namespace {
         case PKT_HELLO: {
             if (len < (int)sizeof(HelloPacket)) return;
             const HelloPacket* p = (const HelloPacket*)buf;
-            char name[25]; memcpy(name, p->name, 24); name[24] = 0;
+            char name[25]; memcpy(name, p->name, 24); name[24] = 0; name[16] = 0;   // 16..23 carry the colour and the instance id
+            uint32_t color = (uint8_t)p->name[19] == 0xC0
+                ? 0xFF000000u | ((uint32_t)(uint8_t)p->name[16] << 16) | ((uint32_t)(uint8_t)p->name[17] << 8) | (uint8_t)p->name[18] : 0;
+            if (color != g_stats.peerColor) { g_stats.peerColor = color; LOG("Peer colour: %06X%s", color & 0xFFFFFF, color ? "" : " (game colour)"); }
             if (g_stats.peerName != name) {
                 g_stats.peerName = name;
                 LOG("Peer name: %s", name);

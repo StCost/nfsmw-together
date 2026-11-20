@@ -265,6 +265,18 @@ namespace {
         { Perf::Scope perfGhost(Perf::Ghost);
         if (g_netOk && g_gameOk && linked) {
             ghostStatus = Game::UpdateGhost(Net::Latest(), Net::Previous(), g_ghostOn && g_cfg.ghostEnabled);
+            {   // the log says why the other car isn't there (the overlay may be hidden)
+                static std::string lastGhost; static DWORD lastAt = 0;
+                std::string kind = ghostStatus.substr(0, ghostStatus.find(" ("));
+                if (ghostStatus.rfind("waiting", 0) == 0 && ghostStatus != lastGhost && GetTickCount() - lastAt > 3000) {
+                    const Net::Snapshot& ps = Net::Latest();
+                    LOG("Ghost: %s | peer state %s, hasCar %d, flow %d, co-op allowed there %d",
+                        ghostStatus.c_str(), ps.valid ? "yes" : "none", ps.valid ? ps.s.hasCar : -1, ps.valid ? ps.s.gameFlowState : -1, ps.valid ? ps.s.pad[1] : -1);
+                    lastAt = GetTickCount();
+                }
+                if (ghostStatus != lastGhost) lastGhost = ghostStatus;
+                (void)kind;
+            }
         } else if (g_gameOk) {
             Game::ReleaseGhost();
         }

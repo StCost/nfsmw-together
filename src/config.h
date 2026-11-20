@@ -9,6 +9,7 @@ struct Config {
     int         port = 47555;         // [Network] Port (both sides bind it)
     int         sendRateHz = 60;      // [Network] SendRate
     std::string playerName = "Player";// [Player] Name
+    uint32_t    playerColor = 0;         // [Player] Color - RRGGBB the other player sees our map/minimap blip in; 0 = not set (game colour)
     bool        autoStart = true;      // [AutoStart] Enabled - title screen -> career automatically
     int         autoStartDelayMs = 2500;   // [AutoStart] DelayMs - wait in the menu before the first press
     int         autoStartIntervalMs = 1500;// [AutoStart] IntervalMs - between presses

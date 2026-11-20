@@ -175,6 +175,7 @@ constexpr uint16_t COOP_VERSION = 17;   // 17: story scenes (nisHash also carrie
 struct NetStats {
     bool        connected = false;
     std::string peerName;
+    uint32_t    peerColor = 0;          // ARGB the peer wants its blip shown in (0 = the game's colour)
     std::string peerAddr;
     int         pingMs = -1;
     uint32_t    lastRecvTick = 0;

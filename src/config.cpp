@@ -24,6 +24,13 @@ void Config::Load(const char* ini) {
     port         = ReadInt(ini, "Network", "Port", 47555);
     sendRateHz   = ReadInt(ini, "Network", "SendRate", 60);
     playerName   = ReadStr(ini, "Player", "Name", "Player");
+    {   // "RRGGBB" or "#RRGGBB"; empty = the game's own colour
+        std::string c = ReadStr(ini, "Player", "Color", "");
+        if (!c.empty() && c[0] == '#') c.erase(0, 1);
+        char* end = nullptr;
+        unsigned long v = c.size() == 6 ? strtoul(c.c_str(), &end, 16) : 0;
+        playerColor = (end && *end == 0) ? (0xFF000000u | (uint32_t)(v & 0xFFFFFF)) : 0;
+    }
     autoStart    = ReadInt(ini, "AutoStart", "Enabled", 1) != 0;
     autoStartDelayMs    = ReadInt(ini, "AutoStart", "DelayMs", 2500);
     autoStartIntervalMs = ReadInt(ini, "AutoStart", "IntervalMs", 1500);
