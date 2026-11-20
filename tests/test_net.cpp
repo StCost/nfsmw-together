@@ -50,7 +50,7 @@ TEST(net_hello_name_limits) {
         p.h = Hdr(PKT_HELLO, 1);
         memset(p.name, 'A', sizeof(p.name));
         Inject(p);
-        CHECK_EQ(Net::Stats().peerName.size(), 24);
+        CHECK_EQ(Net::Stats().peerName.size(), 16);           // bytes 16.. carry the colour and the instance id
     }
 }
 
