@@ -9,7 +9,7 @@ single-player **career campaign together** - free roam with traffic, races again
 Blacklist rivals, police pursuits, each with their own car and tuning. Works over LAN or a VPN
 (Hamachi, Radmin VPN, ZeroTier).
 
-*Also searched as: NFS MW co-op, NFSMW multiplayer career, Most Wanted 2005 coop campaign, NFS Most
+*A.K.A.: NFS MW co-op, NFSMW multiplayer career, Most Wanted 2005 coop campaign, NFS Most
 Wanted online free roam with a friend, Need for Speed Most Wanted two player mod.*
 
 ## Install
@@ -30,13 +30,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 
 - Need for Speed: Most Wanted (2005) for PC, patched to **v1.3**. Your own copy: no game files are included here.
 - The same version of the mod on both PCs.
-- A way for the two PCs to reach each other: the same home LAN network, a VPN like Hamachi, Radmin VPN or ZeroTier,
+- LAN network, or a VPN like Hamachi, Radmin VPN or ZeroTier,
   or UDP port 47555 forwarded to the host.
-
-Already have an ASI loader? Keep your `dinput8.dll` and copy only the `scripts` folder and the launcher.
-Coming from the old CoopMod? Delete `scripts\CoopMod.asi`; your settings carry over.
-Using the Widescreen Fix? Its own `SkipIntro = 1` switches off all of the game's movies, the career's story movies included.
-The launcher sets it to 0 when you press Play. To skip the intro, tick "Skip intros" in the launcher's settings (`[Start] SkipIntro`, off by default) instead.
 
 ## What to expect
 
@@ -52,8 +47,6 @@ The launcher sets it to 0 when you press Play. To skip the intro, tick "Skip int
 - **Not yet:** 4 players, and prologue together.
 
 ## Features and progress (92%)
-
-The percentage is a simple count of this list: a ticked line counts fully, a line with **(?)** counts half (it's built, but nobody has played through it on two PCs yet), an empty box counts nothing.
 
 ### Connecting
 - [x] Direct connection between two PCs (one hosts, one joins), with ping shown in the overlay
@@ -133,7 +126,7 @@ The percentage is a simple count of this list: a ticked line counts fully, a lin
 - [x] **F10 / F11** spawn or remove a test copy of the other player's car, **F12** spawns a test cop. For testing purposes
 - [x] Test commands in `scripts\MWTogether.cmd` also include `pursuit` (the cops start a pursuit on you), `uncop` (remove every police car, so the pursuit ends in an escape) and `tp x y z` (move your car). Full list in `docs/TESTING.md`. For testing purposes
 
-[^1]: (?) means feature is implemented, unit tested, but not playtested 100%. If you try one of these, tell us how it went.
+[^1]: (?) means feature is implemented, unit tested, but not playtested 100%.
 
 ## Configuration
 Every option is in `scripts\MWTogether.ini`, which comments each one. Main sections:
