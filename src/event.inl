@@ -481,8 +481,9 @@ static bool CoopAllowedImpl() {
     if (!Mem::Read((uintptr_t)fedb + 0x10, up) || !up) return true;
     if (!(up[0xAC] & 1)) return false;                                         // career not started
     if (up[0xB0] == 0x10) return false;                                        // in the prologue
-    const char* id = EventIdOf(CurrentParms());
-    if (id && id[0] == '1' && id[1] == '6' && id[2] == '.') return false;      // a prologue event (16.x)
+    int mode = 0;
+    const char* id = EventIdOf(CurrentParms(&mode));                           // the last race stays set in free roam:
+    if (mode == 1 && id && id[0] == '1' && id[1] == '6' && id[2] == '.') return false;   // only racing a prologue event (16.x) counts
     return true;
 }
 bool Game::CoopAllowed() {
