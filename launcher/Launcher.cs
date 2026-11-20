@@ -229,6 +229,16 @@ class LauncherForm : Form {
             msRow.Controls.Add(speedBtns[i]);
         }
         sp.Controls.Add(msRow);
+        var colRow = new BgPanel { Size = new Size(W - 24, 32), Margin = new Padding(0, 2, 0, 0) };
+        var colLbl = new Label { Text = "My colour on the map", AutoSize = true, Location = new Point(0, 6), ForeColor = Theme.Text, BackColor = Color.Transparent, Font = Theme.Label };
+        colRow.Controls.Add(colLbl);
+        tip.SetToolTip(colLbl, "The colour the other player sees your blip in, on the minimap and the world map. Game = the game's own colour.");
+        swatch.SetBounds(200, 2, 58, 26); swatch.Cursor = Cursors.Hand;
+        swatch.Click += (s, e) => PickColour();
+        colRow.Controls.Add(swatch);
+        var pick = new GameButton(); StyleButton(pick, "Pick", false); pick.SetBounds(262, 0, 58, 28); pick.Click += (s, e) => PickColour(); colRow.Controls.Add(pick);
+        var gameCol = new GameButton(); StyleButton(gameCol, "Game", false); gameCol.SetBounds(324, 0, 58, 28); gameCol.Click += (s, e) => SetColour(""); colRow.Controls.Add(gameCol);
+        sp.Controls.Add(colRow);
         var portRow = new BgPanel { Size = new Size(W - 24, 32), Margin = new Padding(0, 2, 0, 0) };
         portRow.Controls.Add(new Label { Text = "UDP port", AutoSize = true, Location = new Point(0, 6), ForeColor = Theme.Text, BackColor = Color.Transparent, Font = Theme.Label });
         StyleField(port); port.SetBounds(200, 2, 120, 26); portRow.Controls.Add(port);
@@ -251,6 +261,20 @@ class LauncherForm : Form {
         for (int i = 0; i < 3; ++i) StyleButton(speedBtns[i], (i + 1) + "x", i + 1 == v);
     }
 
+
+    Panel swatch = new Panel { BorderStyle = BorderStyle.FixedSingle };
+    string mapColour = "";       // RRGGBB, "" = the game's colour
+    void SetColour(string hex) {
+        mapColour = hex;
+        int v;
+        swatch.BackColor = hex.Length == 6 && int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out v)
+            ? Color.FromArgb(255, (v >> 16) & 255, (v >> 8) & 255, v & 255) : Color.FromArgb(60, 60, 60);
+    }
+    void PickColour() {
+        using (var d = new ColorDialog { FullOpen = true, Color = mapColour.Length == 6 ? swatch.BackColor : Color.Orange }) {
+            if (d.ShowDialog(this) == DialogResult.OK) SetColour(string.Format("{0:X2}{1:X2}{2:X2}", d.Color.R, d.Color.G, d.Color.B));
+        }
+    }
 
     public void ForceMode(bool host) { SetMode(host); }
     public void ShowSettings() { settings.Visible = true; settingsBtn.Arrow = 2; }
@@ -276,6 +300,7 @@ class LauncherForm : Form {
 
     void LoadSettings() {
         name.Text = Ini.Get("Player", "Name", Environment.UserName);
+        SetColour(Ini.Get("Player", "Color", "").Trim().TrimStart('#').ToUpperInvariant());
         hostIp.Text = Ini.Get("Network", "HostIP", "");
         port.Text = Ini.Get("Network", "Port", "47555");
         skipIntro.Checked = Ini.GetB("Start", "SkipIntro", false);
@@ -295,6 +320,7 @@ class LauncherForm : Form {
         if (!isHost && hostIp.Text.Trim().Length == 0) { status.Text = "Enter the host's IP address to join."; return false; }
         if (name.Text.Trim().Length == 0) { status.Text = "Enter your name."; return false; }
         Ini.Set("Player", "Name", name.Text.Trim());
+        Ini.Set("Player", "Color", mapColour);
         Ini.Set("Network", "Mode", isHost ? "host" : "client");
         if (!isHost) Ini.Set("Network", "HostIP", hostIp.Text.Trim());
         Ini.Set("Network", "Port", p.ToString());

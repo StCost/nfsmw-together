@@ -85,6 +85,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Spawn protection, so two cars appearing on the same spot don't collider or launch each other
 - [x] Other player's blip on the minimap
 - [x] Other player on the world map, coloured like your own arrow and moving while the map is open
+- [x] Pick your own blip colour (launcher: My colour on the map, `[Player] Color`): the other player sees you in it on the minimap and the world map (?)
 - [x] Car-to-car collisions between players, with the impact passed on: ram your partner and their car is thrown on their screen too
 - [x] Your names in the race standings instead of the shared save name
 - [x] Your partner's car shows brake lights and damage from crashes (dents, broken parts)
