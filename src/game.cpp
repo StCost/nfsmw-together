@@ -915,6 +915,19 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
 
     // The peer switched cars: respawn ours as their new model / tuning.
     const CarInfo* pc = Net::PeerCar();
+    {   // their car info never came (seen once over a VPN): show them in a car like ours meanwhile
+        static CarInfo fallback{}; static DWORD waitSince = 0; static bool told = false;
+        if (pc) { waitSince = 0; told = false; }
+        else if (!waitSince) waitSince = GetTickCount();
+        else if (GetTickCount() - waitSince > 6000) {
+            CarInfo me{};
+            if (Game::ReadLocalCarInfo(me)) {
+                fallback = me; fallback.hasCustom = 0; memset(fallback.custom, 0, sizeof(fallback.custom)); fallback.customHash = me.carKey;
+                pc = &fallback;
+                if (!told) { told = true; LOG("Ghost: no car info from the other player after 6 s - showing them in a stock car like ours (key %08X)", me.carKey); }
+            }
+        }
+    }
     if (g_ghost && g_ghostKind == GK_SPAWNED && pc && (pc->carKey != g_spawnedKey || pc->customHash != g_spawnedHash)) {
         LOG("Peer changed car - respawning");
         Game::ReleaseGhost();
