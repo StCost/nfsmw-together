@@ -45,6 +45,7 @@ second, deletes it and logs `Command '<text>': <result>`. This works with the ga
 | `tp <x> <y> <z>` | move your car there (numbers as `pos` prints them). The first call loads the world at that spot; send the same `tp` again about 5 s later to move. Handy to reach a marker the autopilot won't drive to |
 | `clone` / `unclone` / `cop` | spawn/remove a copy of the other player's car, spawn a cop |
 | `notice <text>` | show a notice in the game's banner |
+| `ground` | log every car here (ours, the other player's, AI racers, cops, traffic): physics mode (1 full, 2 emulated = height from the road path, may float), height above our ground (cars ~0.7 m, trucks ~1.8 m), copies marked `copy`; replies the counts. In co-op the client also logs every 10 s `Traffic: N frame(s) of copies put on the ground (largest correction X m)` while it corrects floating copies |
 | `milestones` | log our rival's open and done milestones / speed traps (key, rival, value) and print the counts |
 | `milestone` / `speedtrap` | complete the first open milestone / speed trap of our rival here, through the game's own award (bounty included), as if we had earned it. With co-op on it's then sent to the other player |
 | `shot <file.bmp>` | save the next frame (without the overlay) |

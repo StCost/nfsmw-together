@@ -68,7 +68,7 @@ namespace {
         if (VirtualProtect(f, 5, PAGE_EXECUTE_READWRITE, &old)) { memcpy(f, jmp, 5); VirtualProtect(f, 5, old, &old); FlushInstructionCache(GetCurrentProcess(), f, 5); LOG("Crash dialog: plain error box installed"); }
     }
     void Toast(const std::string& s) {
-        bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", s.c_str(), "");
+        bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron("Most Wanted Together", s.c_str(), "");
         // only the game's own banner: where it can't show right now (loading, a menu), the notice waits
         // and appears as soon as it can (the newest one; dropped after 20 s)
         if (inGame) g_pendingNotice.clear(); else { g_pendingNotice = s; g_pendingAt = GetTickCount(); }
@@ -223,6 +223,7 @@ namespace {
                     else if (c == "slowai") r = Game::DebugStopOpponents();
                     else if (c == "cash") r = Game::DebugCash();
                     else if (c == "milestones") r = Game::DebugMilestones("");
+                    else if (c == "ground") r = Game::DebugGround();
                     else if (c == "milestone") r = Game::DebugMilestones("milestone");
                     else if (c == "speedtrap") r = Game::DebugMilestones("speedtrap");
                     else if (c == "pursuit") r = Game::DebugForcePursuit();
@@ -434,7 +435,7 @@ namespace {
             if (GetTickCount() - g_pendingAt > 20000) g_pendingNotice.clear();
             else if (GetTickCount() >= nextTry) {
                 nextTry = GetTickCount() + 500;
-                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", g_pendingNotice.c_str(), "")) g_pendingNotice.clear();
+                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron("Most Wanted Together", g_pendingNotice.c_str(), "")) g_pendingNotice.clear();
             }
         }
         bool toastOn = false;   // the black corner box is gone

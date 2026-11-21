@@ -103,6 +103,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] You see the cops chasing the other player
 - [x] Cops may switch to chasing the other player when you're both being chased (?)
 - [x] Traffic cars near the other player keep full physics instead of moving at reducing quality
+- [x] The other player's traffic, cops and race opponents no longer float above the road (or sink into it) on your screen: a car their game runs in its cheap physics mode (no world loaded under it there) is put on your road surface, smoothly (?)
 - [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC
 - [x] Pause menu and world map don't pause the time while you're connected
 - [x] No speedbreaker in co-op (slow motion can't work for two people)

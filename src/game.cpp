@@ -4,6 +4,7 @@
 #include "milestoneutil.h"
 #include "raceutil.h"
 #include "profileutil.h"
+#include "groundutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
