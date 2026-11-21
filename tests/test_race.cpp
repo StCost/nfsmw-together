@@ -2,6 +2,7 @@
 // race script gets for our racer, and which of our racers follows a host opponent.
 #include "mwt_test.h"
 #include "../src/raceutil.h"
+#include <cstring>
 
 using namespace CoopRace;
 
@@ -65,4 +66,12 @@ TEST(race_pick_racer_rival_of_another_model) {
     CHECK_EQ(PickRacer(none, 1, 0x79054B53u, true), -1);   // nothing free: nothing bound
     CHECK_EQ(PickRacer(none, 0, 0x79054B53u, true), -1);
     CHECK(ANY_MODEL_AFTER_MS > 0);
+}
+
+TEST(race_boss_helper_car_list) {
+    CHECK(CoopRace::BossHelperCar(6) && strcmp(CoopRace::BossHelperCar(6), "imprezawrx") == 0);
+    CHECK(CoopRace::BossHelperCar(11) && strcmp(CoopRace::BossHelperCar(11), "eclipsegt") == 0);
+    CHECK(CoopRace::BossHelperCar(15) == nullptr);   // no partner known: the game's pick
+    CHECK(CoopRace::BossHelperCar(0) == nullptr);
+    CHECK(CoopRace::BossHelperCar(16) == nullptr);
 }

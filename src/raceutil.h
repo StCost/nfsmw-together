@@ -46,4 +46,17 @@ namespace CoopRace {
         if (anyModel) for (int i = 0; i < n; ++i) if (c[i].free) return i;
         return -1;
     }
+
+    // Rival races together: the helper's car for Blacklist rival #bin - a car the rival's race intro shows
+    // besides the rival's own; null = none: the game's own pick. Seen by starting each rival's first race
+    // and logging the cars its intro cutscene builds: all others build only traffic / police props
+    // (traf*, copmidsize_nis, log trucks) or nothing.
+    inline const char* BossHelperCar(int bin) {
+        switch (bin) {
+        case 6:  return "imprezawrx";   // Ming (6.1.1: imprezawrx, eclipsegt)
+        case 10: return "eclipsegt";    // 10.2.1
+        case 11: return "eclipsegt";    // Big Lou (11.1.2)
+        default: return nullptr;
+        }
+    }
 }
