@@ -38,6 +38,11 @@
 //  which finds the race parameters by it: parms+4 ? *(parms+4) : *(*(*(parms+8)+4)+0x20). We check that
 //  0x600A20 gives our parameters back before posting.
 // ---------------------------------------------------------------------------
+// The prologue's last race (16.2.1 against Razor) is a scripted loss: no shared win there.
+static bool ScriptedLossEvent() {
+    const char* id = EventIdOf(CurrentParms());
+    return id && strcmp(id, "16.2.1") == 0;
+}
 namespace {
     bool g_coopWinLogged = false;
     uint32_t g_peerWonEvent = 0;    // event the other player has won (kept until our event changes)
@@ -51,6 +56,7 @@ namespace {
         int rank = 0;
         if (localRi && Mem::Read((uintptr_t)localRi + 0x10, rank) && rank == 1) return true;
         if (!g_cfg.sharedWins) return false;
+        if (ScriptedLossEvent()) return false;      // the prologue's Razor race: the story needs the loss
         if (g_peerWonEvent && g_peerWonEvent == Game::CurrentEventHash()) {
             if (!g_coopWinLogged) { g_coopWinLogged = true; g_coopWinNotice = true; LOG("Race: the other player won - counted as our win too"); }
             return true;
@@ -137,7 +143,8 @@ static void CoopWinLatchTick(bool connected, const Net::Snapshot& peer) {
     }
     lastEvent = ev; lastRestart = restart; lastPeerFin = pfin;
     if (ev && connected && sameEvent && peer.s.inRace && !peer.s.finished) g_peerRacedHere = true;
-    if (ev && connected && sameEvent && peer.s.inRace && peer.s.finished == 1 && g_peerRacedHere) g_peerWonEvent = ev;   // also without a ghost racer (rival races)
+    // (never in the prologue's Razor race 16.2.1: the story needs that loss - the car breaks down on both)
+    if (ev && connected && sameEvent && peer.s.inRace && peer.s.finished == 1 && g_peerRacedHere && !ScriptedLossEvent()) g_peerWonEvent = ev;   // also without a ghost racer (rival races)
 }
 
 // ---- finish our racer as the winner (see the top of this file) ----

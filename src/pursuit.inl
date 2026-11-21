@@ -272,7 +272,10 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
     static DWORD next = 0;
     if ((int)(now - next) < 0) return;
     next = now + 50;
-    bool on = g_cfg.sharedPursuits && connected && g_coopLinked;
+    // (in the prologue only while both are on the same step of its chain: a pursuit there must not pull a
+    // player who is in another scripted part of it)
+    Game::PrologueState pst = Game::PrologueNow();
+    bool on = g_cfg.sharedPursuits && connected && g_coopLinked && Prologue::SameStep(pst.inPrologue, pst.step, PeerPrologue());
     bool here = on && FreeRoamHere();
     void* me = here ? LocalVehicle() : nullptr;
     void* pursuit = me ? PursuitOf(me) : nullptr;

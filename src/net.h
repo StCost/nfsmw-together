@@ -87,7 +87,7 @@ struct CarState {
     uint8_t  pursuitFlags;  // PURSUIT_* bits below
     uint8_t  bustSeq;       // +1 every time the sender gets busted on its own (the other game follows)
     uint16_t coolLeft10;    // cooldown time left x10 (s) of the sender's pursuit
-    uint16_t pad2;
+    uint16_t prologue;      // co-op in the prologue: Prologue::Encode (prologueutil.h); 0 from older builds
 };
 enum : uint8_t {
     PURSUIT_ACTIVE   = 1,   // in a pursuit that is still running (not busted / escaped)

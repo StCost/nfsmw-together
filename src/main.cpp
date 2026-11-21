@@ -12,6 +12,7 @@
 #include <share.h>
 #include "config.h"
 #include "net.h"
+#include "prologueutil.h"
 #include "overlay.h"
 #include "game.h"
 #include "input.h"
@@ -35,7 +36,9 @@ namespace {
     HWND        g_prevForeground = nullptr;   // the window that had focus when the game started
     std::string g_toast;                      // (no longer shown: notices use the game's banner only)
     uint32_t    g_toastAt = 0;
-    bool        g_coopHere = true;            // this profile may play co-op (career started, prologue done)
+    bool        g_coopHere = true;            // this profile may play co-op (career started; prologue done, or [Coop] Prologue)
+    bool        g_inPrologue = false;         // this career is in the prologue
+    bool        g_careerStarted = true;       // this profile has started its career
     const char* g_coopStatus = "";            // overlay line when co-op is off because of the prologue
     // A short notice for the player: in the game's own banner (the EA Trax chyron) when it can show one,
     // otherwise as a line in the corner (drawn by the overlay, also when the overlay is hidden).
@@ -246,13 +249,18 @@ namespace {
 
             local.gameFlowState = Game::GameFlowState();
             g_coopHere = !g_gameOk || Game::CoopAllowed();
+            Game::PrologueState pro = g_gameOk ? Game::PrologueNow() : Game::PrologueState{ true, false, 0 };
+            Prologue::Peer peerPro = Prologue::Decode(Net::Latest().valid, Net::Latest().s.prologue);
+            g_inPrologue = pro.inPrologue; g_careerStarted = pro.careerStarted;
             haveLocal = g_gameOk && Game::ReadLocalCar(local);
             local.hasCar = (haveLocal && g_coopHere) ? 1 : 0;   // in the prologue the other side shows nothing
             local.nisHash = g_gameOk ? Game::SceneHash() : 0;      // also during scenes without a car (cutscene or story movie)
             local.nisVote = g_gameOk ? Game::NisVoteHash() : 0;
             local.eventHash = g_gameOk ? Game::CurrentEventHash() : 0;
             local.pad[0] = g_gameOk ? Game::RaceStage() : 0;
-            local.pad[1] = g_coopHere ? 1 : 0;                    // co-op allowed here (past the prologue)
+            // co-op allowed here: past the prologue, or in it ([Coop] Prologue) towards a build that knows it
+            local.pad[1] = (g_coopHere && Prologue::AllowedHere(pro.careerStarted, pro.inPrologue, g_cfg.coopPrologue, peerPro)) ? 1 : 0;
+            local.prologue = Prologue::Encode(pro.inPrologue, pro.step);
             local.pad[2] = g_gameOk ? Game::CareerBin() : 0;      // career rival number (story scenes the other game may show)
             if (g_gameOk) Game::FillSharedPursuit(local);          // [Coop] SharedPursuits: heat, pursuit state, busts
 
@@ -272,12 +280,32 @@ namespace {
         // a peer we have no state from yet counts as allowed).
         const Net::Snapshot& peerSnap = Net::Latest();
         bool peerAllowed = !peerSnap.valid || peerSnap.s.pad[1] != 0;
-        bool linked = st.connected && g_coopHere && peerAllowed;
+        Prologue::Peer peerPro = Prologue::Decode(peerSnap.valid, peerSnap.s.prologue);
+        bool phaseOk = Prologue::PhaseMatches(g_inPrologue, peerPro);      // both in the prologue, or both past it
+        bool linked = st.connected && g_coopHere && peerAllowed && phaseOk;
         if (g_gameOk) Game::SetCoopLinked(linked);
         {
             static bool toldHere = false, toldPeer = false;
-            if (st.connected && !g_coopHere && !toldHere) { toldHere = true; Toast("Finish the prologue first - co-op starts in free roam", true); LOG("Co-op: off - this profile is still in the prologue / career not started"); }
-            if (st.connected && g_coopHere && !peerAllowed && !toldPeer) {
+            static bool toldOld = false;
+            if (st.connected && !g_coopHere && !toldHere) {
+                toldHere = true;
+                if (!g_careerStarted && g_cfg.coopPrologue) { Toast("Start your career - co-op begins with its first race", false); LOG("Co-op: off until this profile starts its career"); }
+                else { Toast("Finish the prologue first - co-op starts in free roam", true); LOG("Co-op: off - this profile is still in the prologue / career not started"); }
+            }
+            if (g_coopHere) toldHere = false;     // said again if it comes back (a new profile)
+            if (st.connected && g_coopHere && g_inPrologue && peerSnap.valid && !peerPro.supported && !toldOld) {
+                toldOld = true;
+                Toast("The other player's MW Together is older - co-op starts after the prologue", true);
+                LOG("Co-op: off - we are in the prologue and the other player's build has no prologue co-op");
+            }
+            if (st.connected && g_coopHere && peerAllowed && peerSnap.valid && peerPro.supported && !phaseOk && !peerPro.inPrologue && !toldPeer) {
+                toldPeer = true;
+                Toast((st.peerName.empty() ? std::string("The other player") : st.peerName) + " is past the prologue - co-op starts when you are too", true);
+                LOG("Co-op: off - we are in the prologue, the other player is past it");
+            }
+            // (not while both are in the prologue: their first state may still say "not allowed" for a moment)
+            bool bothInPrologue = g_inPrologue && peerPro.supported && peerPro.inPrologue;
+            if (st.connected && g_coopHere && !bothInPrologue && (!peerAllowed || (peerSnap.valid && !phaseOk && peerPro.inPrologue)) && !toldPeer && !(g_inPrologue && !peerPro.supported)) {
                 toldPeer = true;
                 Toast((st.peerName.empty() ? std::string("The other player") : st.peerName) + " is still in the prologue - co-op starts when they reach free roam", true);
                 LOG("Co-op: off - the other player is still in the prologue");
@@ -326,7 +354,8 @@ namespace {
                 }
                 lastLinked = nowLinked;
             }
-            g_coopStatus = !st.connected ? "" : !g_coopHere ? "off - finish the prologue first" : !peerAllowed ? "off - the other player is in the prologue" : "";
+            g_coopStatus = !st.connected ? "" : !g_coopHere ? "off - finish the prologue first" : !peerAllowed ? "off - the other player is in the prologue"
+                         : !phaseOk ? (g_inPrologue ? "off - you are in the prologue, the other player is past it" : "off - the other player is in the prologue") : "";
         }
         { Perf::Scope perfGhost(Perf::Ghost);
         if (g_netOk && g_gameOk && linked) {

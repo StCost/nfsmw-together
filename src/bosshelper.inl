@@ -45,6 +45,10 @@ namespace {
             bool linked = Net::Stats().connected && g_coopLinked;
             if (!g_cfg.bossHelper || !parms || n < 1 || !(linked || g_cfg.bossHelperSolo)) return n;
             if (!((bool(__thiscall*)(void*))IsBossRaceFn)(parms)) return n;
+            {   // never in the prologue's scripted races
+                const char* id = ((const char*(__thiscall*)(void*))0x5FBA70)(parms);
+                if (id && Mem::IsReadable(id, 4) && Prologue::IsPrologueEvent(id)) return n;
+            }
             char* rs = RaceStatusPtr();
             int have = 0;
             if (!rs || !Mem::Read((uintptr_t)rs + 0x1958, have) || have < 0 || have + n + 1 > 16) return n;

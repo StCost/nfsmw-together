@@ -54,7 +54,7 @@ TEST(config_defaults_when_file_is_missing) {
     CHECK(c.gamepadHotplug); CHECK(c.keepPadBindings);
     CHECK_EQ(c.syncStoryScenes, 1);
     CHECK(c.sharedPursuits); CHECK(c.noPursuitCams);
-    CHECK(c.bossHelper); CHECK(!c.bossHelperSolo);
+    CHECK(c.bossHelper); CHECK(!c.bossHelperSolo); CHECK(c.coopPrologue);
     CHECK(c.hideCursor);
     CHECK(!c.startInBackground);
     // debug options are all off unless asked for
@@ -223,6 +223,7 @@ TEST(config_shipped_ini_matches_built_in_defaults) {
     CHECK_EQ(shipped.streamAroundPeer, def.streamAroundPeer);
     CHECK_EQ(shipped.skipIntro, def.skipIntro);
     CHECK_EQ(shipped.bossHelper, def.bossHelper);
+    CHECK_EQ(shipped.coopPrologue, def.coopPrologue);
     CHECK_EQ(shipped.directFreeRoam, def.directFreeRoam);
     CHECK_EQ(shipped.skipLeaveSafeHouseDialog, def.skipLeaveSafeHouseDialog);
     CHECK_EQ(shipped.autoStart, def.autoStart);

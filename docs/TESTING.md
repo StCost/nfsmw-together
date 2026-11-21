@@ -217,31 +217,41 @@ playing a movie (getting a real one means reaching that point of the career).
 
 ## Prologue and new profiles
 
-Co-op stays off until a profile has started its career and finished the prologue (the scripted races
-16.x in the starting BMW). This is checked on each PC (`Game::CoopAllowed`) and sent with the state
-(`CarState.pad[1]`).
+The prologue (career bin 16, profile +0xB0 == 0x10) is a fixed chain of scripted events the game loads by
+itself one after the other - seen on a fresh career: 16.1.0, 16.2.2, 16.2.3, 16.1.1, 16.8.1 (a ~30 s cutscene
+step), 16.2.1 (Razor, lost on purpose), then the car lot and free roam with Mia's "I'll meet you there" SMS,
+still in the prologue until you meet her. Story movies play over the world at some starts; no free roam
+before the car lot. With
+`[Coop] Prologue=1` (default) and the same build on both PCs, two careers in the prologue are linked:
+each game runs its own chain (no `Event: sent ... to peer` for 16.x), the partner's car is shown next to
+the race (not as a racer: the scripted opponents stay), and the start-together hold waits without the
+20 s limit while the partner is still on the way to the same event (`CarState.prologue`: in the prologue,
+prologue events done). A career in the prologue and one past it are not linked. An older build on the
+other side: co-op starts after the prologue, as before (`CarState.pad[1]` = 0 in the prologue).
 
 Making a fresh profile without losing the real one:
 
-1. Close the game. Copy `Documents\NFS Most Wanted` to a backup folder, then rename the folder (e.g. to
-   `NFS Most Wanted.real`). The game now finds no profile.
-2. Set `HostIP` to the other PC. For the second side of the check, the other PC (on a normal career)
-   should show `<name> is still in the prologue` once and no car.
-3. Start the game focused, create the profile by hand ("Create a new alias?" Yes, the autosave notices,
-   the name, "save the alias?" Yes), then Career > Start Career.
-4. Afterwards close the game, rename the test folder away and the real one back. Check the real save's
-   time/hash is what it was.
+1. Close the game. Copy `Documents\NFS Most Wanted\<profile>` to a backup folder, then move it out of
+   `Documents\NFS Most Wanted`. The game now finds no profile.
+2. Start the game focused, create the profile by hand ("Create a new alias?" Yes, the autosave notices,
+   the name, "save the alias?" Yes), then Career > Start Career. The first race (16.1.0) loads at once.
+3. Afterwards close the game, delete the test profile folder and move the real one back. Check the real
+   save's time/hash is what it was.
 
-A pass looks like this:
+A pass looks like this (both PCs on fresh careers, linked):
 
 | Step | Expected |
 |---|---|
-| Boot with no profile | log `Start: no saved profile - the profile screens are left to the player`; the mod presses nothing on the profile screens (default name `NAME` is NOT accepted for you) |
-| A question on the profile screen | `Start: the profile screen asks a question (op ...) - left to the player`, nothing more is confirmed in that boot |
-| Profile loaded, career not started | banner `Finish the prologue first - co-op starts in free roam` once; overlay `Co-op: off - finish the prologue first`; `Start: direct free roam - career not started in this profile` |
-| Prologue races (16.1.0, 16.2.2 ...) | no `Event: sent ... to peer`, no `Start: on the grid ... waiting`, no `AI racer built as peer car`, no ghost car; the other PC shows `<name> is still in the prologue ...` once and no car |
-| Next boot of that profile | the load screen is confirmed again (`OK on the load screen`), the gate notice shows again |
-| Normal career profile | no `Co-op: off` lines; ghost, events, traffic as usual |
+| Career started | log `Prologue: in the prologue (career started, prologue events done 0)`; both: `Co-op on - <name> is in your world now` |
+| First race 16.1.0 | `Event: prologue event - not sent (each game runs its own prologue ...)`; the partner's car beside the grid, no `AI racer built as peer car` |
+| One finishes first | the next race loads by itself; `Prologue: ... prologue events done 1`; on its grid `Start: on the grid first - waiting for <name> to catch up` and the notice `waiting for <name> to catch up`; the world stands still |
+| The other arrives | `Start: go (both ready, ...)` on both, the race starts together |
+| Razor race 16.2.1 | the car breaks on both; no `the other player won while we still drive` |
+| Story movie at a start (16.1.0, 16.2.1) | no grid hold while it plays: the hold starts after the movie |
+| Car lot, drive to Mia | still `in the prologue ... done 5` on both and linked: both drive in free roam together |
+| After meeting Mia | `Prologue: not in the prologue (career started, ...)`; while only one has met her the two are not linked for a moment |
+| One career in the prologue, one past it | no link; the one past it gets `<name> is still in the prologue ...`, the other `<name> is past the prologue ...` |
+| Normal career profile | `Prologue: not in the prologue (career started, prologue events done 0)`; ghost, events, traffic as usual |
 
 ## Before a release
 

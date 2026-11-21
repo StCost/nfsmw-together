@@ -52,6 +52,7 @@ void Config::Load(const char* ini) {
     sharedMilestones = ReadInt(ini, "Career", "SharedMilestones", 1) != 0;
     startTogether = ReadInt(ini, "Coop", "StartTogether", 1) != 0;
     separateGridSlots = ReadInt(ini, "Coop", "SeparateGridSlots", 1) != 0;
+    coopPrologue = ReadInt(ini, "Coop", "Prologue", 1) != 0;
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;
     bossHelper = ReadInt(ini, "Coop", "BossHelper", 1) != 0;
     bossHelperSolo = ReadInt(ini, "Debug", "BossHelperSolo", 0) != 0;

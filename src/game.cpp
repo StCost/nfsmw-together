@@ -4,6 +4,7 @@
 #include "milestoneutil.h"
 #include "raceutil.h"
 #include "profileutil.h"
+#include "prologueutil.h"
 #include "groundutil.h"
 #include "noticeutil.h"
 #include "mem.h"
@@ -759,6 +760,16 @@ namespace {
 // take that racer's place, so their car is spawned next to the race instead (not in the standings).
 // The event being started is known either from the race status or from the invitation we act on.
 static uint32_t g_startingEventHash = 0;
+// A prologue event (16.x) loading: its opponents are scripted characters (16.2.1: Razor, whose win the
+// story needs), so the other player doesn't take an AI racer's place there either.
+static bool PrologueRaceStarting() {
+    __try {
+        void* rs = nullptr; void* parms = nullptr;
+        if (Mem::Read(0x91E000, rs) && rs) Mem::Read((uintptr_t)rs + 0x1968, parms);
+        const char* id = parms ? ((const char*(__thiscall*)(void*))0x5FBA70)(parms) : nullptr;
+        return id && Mem::IsReadable(id, 4) && Prologue::IsPrologueEvent(id);
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
 static bool BossRaceStarting() {
     __try {
         void* rs = nullptr; void* parms = nullptr; void* db = nullptr;
@@ -802,7 +813,7 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
         g_nisNext = (g_nisNext + 1) % 8;
         LOG("Race: cutscene car built, model %08X", vp->carType);
     }
-    if (vp && vp->carClass == DRV_RACER && !g_racerReplacedThisLoad && g_cfg.ghostEnabled && Net::Stats().connected && g_coopLinked && !BossRaceStarting()) {
+    if (vp && vp->carClass == DRV_RACER && !g_racerReplacedThisLoad && g_cfg.ghostEnabled && Net::Stats().connected && g_coopLinked && !BossRaceStarting() && !PrologueRaceStarting()) {
         if (const CarInfo* pc = Net::PeerCar()) {
             g_origRacer[0] = vp->carType; g_origRacerCustom = vp->customization; g_origRacerMatched = vp->matched;
             vp->carType = pc->carKey;

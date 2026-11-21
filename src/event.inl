@@ -14,6 +14,7 @@
 //  GRaceParameters::GetEventID      0x5FBA70  thiscall(parms) -> const char*
 //  GRaceParameters::GetStartPosition 0x5FAD10 thiscall(parms, Vector3* out)
 // ---------------------------------------------------------------------------
+static Prologue::Peer PeerPrologue();   // the other player's prologue state (below)
 namespace {
     void*    g_lastParms = nullptr;          // race parameters we last saw on this machine
     uint32_t g_handledHash = 0; DWORD g_handledAt = 0;   // invitation we already acted on (repeats are ignored)
@@ -71,7 +72,8 @@ namespace {
         if (cur && mode == 1 && fromPeer && EventHashOf(cur) != eventHash && resultsScreen) {
             void* db0 = nullptr; Mem::Read(0x91E004, db0);
             void* next = db0 ? ((void*(__thiscall*)(void*, uint32_t))0x5FB710)(db0, eventHash) : nullptr;
-            if (!next || IsChallengeEvent(next)) return;   // one we'd refuse in free roam anyway: stay on the results
+            if (!next || IsChallengeEvent(next) || !Prologue::BossEventJoinable(((bool(__thiscall*)(void*))0x5FBD90)(next), eventId, Game::CareerBin()))
+                return;                                    // one we'd refuse in free roam anyway: stay on the results
             static DWORD lastExit = 0;
             void* fe = nullptr;
             if (GetTickCount() - lastExit > 2500 && Mem::Read(0x91CADC, fe) && fe) {
@@ -90,6 +92,13 @@ namespace {
         Mem::Read(0x91E004, db);
         void* parms = db ? ((void*(__thiscall*)(void*, uint32_t))0x5FB710)(db, eventHash) : nullptr;
         if (!parms) { LOG("Event: unknown event %s (%08X)", eventId, eventHash); return; }
+        if (fromPeer && !Prologue::BossEventJoinable(((bool(__thiscall*)(void*))0x5FBD90)(parms), eventId, Game::CareerBin())) {
+            // a Blacklist rival's race or story event (Razor's races, the final pursuit) of a rival our career
+            // isn't at: winning it here would count for the wrong rival
+            static DWORD lastLog = 0;
+            if (GetTickCount() - lastLog > 10000) { lastLog = GetTickCount(); LOG("Event: %s is a rival event of another Blacklist rival than ours (#%d) - not joined", eventId, (int)Game::CareerBin()); }
+            return;
+        }
         if (fromPeer && flow == 6 && IsChallengeEvent(parms)) {
             // a Challenge Series event needs its preset car, which only a start from the menu builds
             static DWORD lastLog = 0;
@@ -194,6 +203,9 @@ static void EventTickImpl(bool connected) {
             if (h == g_joiningEvent) {
                 sprintf_s(g_eventStatus, "joined %s", id);
                 g_joiningEvent = 0;                          // we started it because the peer did: don't echo
+            } else if (Prologue::IsPrologueEvent(id)) {
+                // the prologue: the other game loads the same event by itself (its own chain), the start waits for it
+                LOG("Event: prologue event - not sent (each game runs its own prologue, the start waits for the other player)");
             } else if (connected && (ctx == 2 /*career*/ || (ctx == 0 && IsChallengeEvent(parms)))) {
                 // our AI opponents first, so the peer builds the same ones. Kept and repeated for a
                 // few seconds (SendInvite) until the peer is in the race too.
@@ -242,7 +254,8 @@ bool Game::InstallEventSync() {
         g_peerRosterAt = GetTickCount();
     };
     Net::OnEvent = [](uint32_t hash, const char* id) {
-        if (!g_coopLinked) return;     // one of us is still in the prologue: no shared events
+        if (!g_coopLinked) return;     // one of us is in the prologue and the other past it: no shared events
+        if (Prologue::IsPrologueEvent(id) || Game::PrologueNow().inPrologue) { LOG("Event: %s from the other player ignored - in the prologue each game runs its own chain", id); return; }
         __try { OnEventPacket(hash, id); } __except (EXCEPTION_EXECUTE_HANDLER) { LOG("Event: exception handling peer event"); }
     };
     return true;
@@ -400,10 +413,12 @@ namespace {
     bool     g_sawNis = false, g_holding = false;
     DWORD    g_modeSince = 0, g_holdSince = 0, g_readyAt = 0;
     char     g_startStatus[64] = "";
+    bool     g_prologueHeld = false;   // the hold waited for a partner still on the way (prologue)
 
     void ReleaseHold(const char* why) {
         if (!g_holding) return;
         g_holding = false;
+        g_prologueHeld = false;
         int req = 0;
         if (Mem::Read(0x91CAE4, req) && req > 0) { --req; Mem::Write(0x91CAE4, req); }
         g_startStatus[0] = 0;
@@ -411,6 +426,11 @@ namespace {
     }
 }
 
+// the prologue: the hold has no 20 s limit while the other player is still on the way here by their chain
+static bool PrologueHoldOn(uint32_t hash, const Net::Snapshot& pr) {
+    Game::PrologueState st = Game::PrologueNow();
+    return st.inPrologue && PeerPrologue().inPrologue && pr.s.eventHash != hash;
+}
 static void StartSyncTickImpl(bool connected) {
     DWORD now = GetTickCount();
     uint32_t hash = g_curEventHash;
@@ -418,7 +438,8 @@ static void StartSyncTickImpl(bool connected) {
     if (!hash || Game::GameFlowState() != 6) { g_stage = hash ? 1 : 0; g_stageEvent = hash; g_sawNis = false; g_modeSince = 0; ReleaseHold("event over"); return; }
     if (hash != g_stageEvent) { g_stageEvent = hash; g_stage = 1; g_sawNis = false; g_modeSince = 0; g_readyAt = 0; }
     int mode = 0; CurrentParms(&mode);
-    bool nis = Game::NisSceneHash() != 0;
+    // (the prologue's events start with a story movie over the world: not on the grid while it plays)
+    bool nis = Game::NisSceneHash() != 0 || (Game::PrologueNow().inPrologue && Game::SceneHash() != 0);
     if (nis) g_sawNis = true;
     if (mode == 1) { if (!g_modeSince) g_modeSince = now; } else g_modeSince = 0;
     // on the grid: the intro cutscene is over (or the event has none: 3 s of racing mode without one)
@@ -434,18 +455,34 @@ static void StartSyncTickImpl(bool connected) {
         // (while our invitation is still being repeated the peer may be leaving the previous race's results)
         bool peerComing = pr.valid && (pr.s.eventHash == hash || g_inviteHash == hash ||
                                        (pr.s.eventHash == 0 && g_handledHash == hash));
+        Game::PrologueState pst = Game::PrologueNow();
+        bool prologueWait = Prologue::WaitForPeer(pst.inPrologue, pst.step, PeerPrologue(), pr.valid && pr.s.eventHash == hash);
+        if (prologueWait) peerComing = true;           // the prologue: they come to this start by their own chain
         bool peerReady = pr.valid && pr.s.eventHash == hash && pr.s.pad[0] >= 2;
         if (connected && g_cfg.startTogether && peerComing && !peerReady && !g_holding) {
             int req = 0;
-            if (Mem::Read(0x91CAE4, req)) { ++req; Mem::Write(0x91CAE4, req); g_holding = true; g_holdSince = now; }
+            if (Mem::Read(0x91CAE4, req)) { ++req; Mem::Write(0x91CAE4, req); g_holding = true; g_holdSince = now; g_prologueHeld = prologueWait && pr.s.eventHash != hash; }
             const std::string& pn = Net::Stats().peerName;
-            sprintf_s(g_startStatus, "waiting for %s to load...", pn.empty() ? "the other player" : pn.c_str());
+            sprintf_s(g_startStatus, prologueWait && pr.s.eventHash != hash ? "waiting for %s to catch up" : "waiting for %s to load...",
+                      pn.empty() ? "the other player" : pn.c_str());
             LOG("Start: on the grid first - %s", g_startStatus);
         }
     }
     if (g_holding) {
         if (!connected || !pr.valid) ReleaseHold("the other player is gone");
         else if (pr.s.eventHash == hash && pr.s.pad[0] >= 2) ReleaseHold("both ready");
+        else if (PrologueHoldOn(hash, pr)) {
+            g_prologueHeld = true;
+            if (now - g_holdSince > 15 * 60 * 1000) ReleaseHold("waited 15 minutes in the prologue");
+            else if (!Prologue::WaitForPeer(true, Game::PrologueNow().step, PeerPrologue(), false))
+                ReleaseHold("the other player is not on the way here");
+            else {   // back in the menus for 30 s (quit their career): not coming
+                static DWORD menuSince = 0;
+                if (pr.s.gameFlowState != 3) menuSince = 0; else if (!menuSince) menuSince = now;
+                if (menuSince && now - menuSince > 30000) { menuSince = 0; ReleaseHold("the other player is in the menus"); }
+            }
+        }
+        else if (g_prologueHeld && (g_prologueHeld = false, true)) g_holdSince = now;   // they arrived: the usual 20 s to load from now
         else if (now - g_holdSince > 20000) ReleaseHold("waited long enough");
         else {
             // roaming with no event, or in a different one, for 1.5 s: they are not coming
@@ -483,7 +520,7 @@ static void RestartTickImpl(bool connected) {
 
 void Game::PauseRuleTick(bool connected) {
     if (!g_ok) return;
-    __try { if (g_holding && GetTickCount() - g_holdSince > 21000) ReleaseHold("safety limit"); } __except (EXCEPTION_EXECUTE_HANDLER) { g_holding = false; }
+    __try { if (g_holding && GetTickCount() - g_holdSince > (g_prologueHeld ? 15u * 60u * 1000u + 1000u : 21000u)) ReleaseHold("safety limit"); } __except (EXCEPTION_EXECUTE_HANDLER) { g_holding = false; }
     __try {
         StartSyncTickImpl(connected);
         // while we wait on the grid, or a story scene holds / plays over the world, the pause must bite
@@ -527,23 +564,50 @@ std::string Game::DebugRestart() {
 }
 uint32_t Game::CurrentEventHash() { return g_curEventHash; }
 
-// Co-op needs a career that is past the prologue. The prologue is a scripted single-player sequence
-// (fixed car, scripted races 16.x and cutscenes); following events or showing cars there would pull
-// the other player into it. Profile: FEDatabase *0x91CF90, loaded flag byte +3, user profile +0x10:
-// +0xAC bit 0 = career started, +0xB0 == 0x10 = prologue (same checks DirectFreeRoam uses).
-static bool CoopAllowedImpl() {
-    uint8_t* fedb = nullptr; uint8_t* up = nullptr;
-    if (!Mem::Read(0x91CF90, fedb) || !fedb || !fedb[3]) return true;          // no profile loaded yet
-    if (!Mem::Read((uintptr_t)fedb + 0x10, up) || !up) return true;
-    if (!(up[0xAC] & 1)) return false;                                         // career not started
-    if (up[0xB0] == 0x10) return false;                                        // in the prologue
-    int mode = 0;
-    const char* id = EventIdOf(CurrentParms(&mode));                           // the last race stays set in free roam:
-    if (mode == 1 && id && id[0] == '1' && id[1] == '6' && id[2] == '.') return false;   // only racing a prologue event (16.x) counts
-    return true;
+// The prologue. Profile: FEDatabase *0x91CF90, loaded flag byte +3, user profile +0x10: +0xAC bit 0 =
+// career started, +0xB0 == 0x10 = prologue (the same checks DirectFreeRoam uses); racing a 16.x event
+// counts as the prologue too. The prologue is a fixed chain of scripted events that each game loads by
+// itself after the last one (no free roam in between). Without [Coop] Prologue, or with a partner whose
+// build doesn't know it, co-op starts after the prologue (as before). With it, both games run their own
+// chain and the start-together hold keeps them on the same step (prologueutil.h).
+// Step = prologue events done (GRaceDatabase 0x5DCA70(eventHash, 2), the check boot.inl uses).
+namespace {
+    const char* const kPrologueEvents[] = { "16.1.0", "16.1.1", "16.2.2", "16.2.3", "16.8.1", "16.2.1" };
+    bool PrologueRaceDone(void* db, const char* id) {
+        void* p = ((void*(__thiscall*)(void*, uint32_t))0x5FB710)(db, HashName(id));
+        return p && ((bool(__thiscall*)(void*, uint32_t, int))0x5DCA70)(db, EventHashOf(p), 2);
+    }
+    Game::PrologueState g_prologue{ false, false, 0 };
+    DWORD g_prologueAt = 0;
+    void ReadPrologueRaw() {
+        Game::PrologueState st{ false, false, 0 };
+        uint8_t* fedb = nullptr; uint8_t* up = nullptr; void* db = nullptr;
+        if (Mem::Read(0x91CF90, fedb) && fedb && fedb[3] && Mem::Read((uintptr_t)fedb + 0x10, up) && up) {
+            st.careerStarted = (up[0xAC] & 1) != 0;
+            int mode = 0;
+            const char* id = EventIdOf(CurrentParms(&mode));             // the last race stays set in free roam:
+            st.inPrologue = st.careerStarted && (up[0xB0] == 0x10 || (mode == 1 && Prologue::IsPrologueEvent(id)));   // only racing one counts
+            if (st.inPrologue && Mem::Read(0x91E004, db) && db)
+                for (const char* e : kPrologueEvents) if (PrologueRaceDone(db, e)) ++st.step;
+        } else st.careerStarted = true;                                  // no profile loaded yet: as before
+        if (st.careerStarted != g_prologue.careerStarted || st.inPrologue != g_prologue.inPrologue || st.step != g_prologue.step)
+            LOG("Prologue: %s (career %s, prologue events done %d)", st.inPrologue ? "in the prologue" : "not in the prologue",
+                st.careerStarted ? "started" : "not started", st.step);
+        g_prologue = st;
+    }
 }
+Game::PrologueState Game::PrologueNow() {
+    if (!g_ok) return { true, false, 0 };
+    DWORD now = GetTickCount();
+    if (now - g_prologueAt > 500) {
+        g_prologueAt = now;
+        __try { ReadPrologueRaw(); } __except (EXCEPTION_EXECUTE_HANDLER) { g_prologue = { true, false, 0 }; }
+    }
+    return g_prologue;
+}
+static Prologue::Peer PeerPrologue() { const Net::Snapshot& p = Net::Latest(); return Prologue::Decode(p.valid, p.s.prologue); }
 bool Game::CoopAllowed() {
-    if (!g_ok) return true;
-    __try { return CoopAllowedImpl(); } __except (EXCEPTION_EXECUTE_HANDLER) { return true; }
+    PrologueState st = PrologueNow();
+    return st.careerStarted && (!st.inPrologue || g_cfg.coopPrologue);
 }
 void Game::SetCoopLinked(bool linked) { g_coopLinked = linked; }

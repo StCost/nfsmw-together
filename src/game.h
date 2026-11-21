@@ -40,7 +40,9 @@ namespace Game {
     void QueueNotice(const std::string& text, bool warn);   // centre of the screen, orange when warn (boot.inl)
     void NoticeTick();                  // shows the queued notices (every frame)   // the game's song-title banner with our text
     void ChyronTick();                  // keeps our banner up for [UI] NoticeSeconds (every frame)
-    bool CoopAllowed();
+    bool CoopAllowed();                 // this career may play co-op now (career started; the prologue only with [Coop] Prologue)
+    struct PrologueState { bool careerStarted; bool inPrologue; int step; };
+    PrologueState PrologueNow();        // the prologue: in it?, prologue events done (cached, event.inl)
     bool InstallNoSlowMotion();
     bool InstallWeatherSync();
     void InstallFollow();               // [Coop] FollowToPursuits: come along to a Blacklist pursuit

@@ -22,7 +22,7 @@ Wanted online free roam with a friend, Need for Speed Most Wanted two player mod
    you connect by yourselves.
 4. Updating: unpack the new zip over the old one. Your nickname and settings (`scripts\MWTogether.ini`) are kept; the zip only brings `MWTogether.default.ini` for new installs.
 
-ATTENTION: Both players must finish the career prologue (the opening races). Reach free roam to see and interact with other players.
+The prologue (the opening races in the BMW) can be played together too: start a new career on both PCs. Each game runs its own prologue, and whoever is ahead waits on the grid of the next race until the other one is there (`[Coop] Prologue`). Co-op needs both players in the same part of the career: both in the prologue, or both past it.
 
 Don't want to replay the prologue? [Releases](https://github.com/StCost/nfsmw-together/releases/latest) also have a **StarterSave** zip: a fresh career saved at the end of the prologue: you drive
 the last short scripted race, then go to the car lot and pick your first car. Unpack it into `Documents` (it holds the `NFS Most Wanted` folder; back up
@@ -55,7 +55,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - **One world.** Shared traffic when you're near by, collisions between your cars, blips on the minimap and map.
 - **Saves.** Everyone keeps their own career save. The host stores a copy of the partner's save after every
   autosave and hands it back if theirs is ever missing. An existing save is never replaced, so everyone's own settings (camera, units, controls) stay theirs.
-- **Not yet:** 4 players, and prologue together.
+- **Not yet:** 4 players.
 
 
 </details>
@@ -132,6 +132,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] When one of you finishes first, the other is finished as the winner right away, even while still driving: 1st place, the winner's screen, the payout, and in rival races the rival's progress, each in their own career (`SharedWins`)
 - [x] Blacklist rival races: the rival on the client follows the host's rival, also in the second race of the series and when the two games built different cars for it
 - [x] Blacklist rival races: you both race the rival in the same event (your partner's car drives alongside, outside the standings), and each of you gets the normal rival flow after winning
+- [x] The prologue together: both of you start a new career; each game plays its own prologue races and movies, and whoever is ahead waits on the grid of the next race until the other one is there. Your partner's car races next to you (the prologue opponents stay as they are); the Razor race stays the story's loss for both (`[Coop] Prologue`) (?)
+- [x] Rival races and story events (Razor's races, the final pursuit) are only joined by a partner whose career is at the same Blacklist rival, so nobody's career jumps ahead (?)
 - [x] Blacklist rival races together have one more AI racer on the rival's side: one more car to beat, with the game's normal racing AI and normal catch-up (not the rival's). Its car is the rival's cutscene partner when that model is loaded, else the game's pick; both PCs build the same car (`[Coop] BossHelper`, 0 = the rival alone)
 - [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose
 - [x] Bounty counts for each player's own career (seen after an escape)
