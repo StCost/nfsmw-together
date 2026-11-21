@@ -1225,6 +1225,12 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
                 LOG("Spawning peer car %08X failed (attempt %d) - freeing room, retry in 1.5 s", pc->carKey, g_spawnFails);
                 RET("peer car model not loaded yet - retrying");
             }
+            {   // face their real heading (the spawn direction alone points north when they stand still)
+                void* srb = RigidBodyOf(iv);
+                float q[4] = { latest.s.rot[0], latest.s.rot[1], latest.s.rot[2], latest.s.rot[3] };
+                if (srb && (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]) > 0.5f)
+                    VCall<void(__thiscall*)(void*, const float*)>(srb, RB_SetOrientationQuat)(srb, q);
+            }
             g_ghostList = -1; // any list
             g_ghostKind = GK_SPAWNED;
             g_spawnedKey = pc->carKey;
@@ -1326,7 +1332,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         if (!g_protectHolding && Dist(lp, s.pos) > (float)g_cfg.safeDistance) {
             g_separated = true;
             LOG("Spawn protection off: players are %.0f m apart", Dist(lp, s.pos));
-        } else if ((g_ghostKind != GK_RACER && !Game::CurrentEventHash()) || Dist(lp, s.pos) < 4.f) {
+        } else if (Dist(lp, s.pos) < 4.f) {   // everywhere: held only while it would stand inside our car
             // (in any event - also a rival race, where their car isn't a racer - it drives from the first
             // frame and is only held while it would stand inside ours)
             // In a race their car drives from the first frame (collisions stay off until the two are
