@@ -54,6 +54,7 @@ namespace {
     //  free roam (flow 6, roaming): 0x5FDCB0 thiscall(GManager = *(0x91E00C), eventHash)
     //  front end (flow 3):          db = *(0x91E004); c = db->0x603440(parms); db->0x600AB0(c, 2 /*career*/);
     //                               db->0x5E39E0(c); 0x57ECA0()  (GameFlowManager::LoadTrack)
+    DWORD g_closeMenusUntil = 0;   // our event menus are closed until then (joining the other player's event)
     void OnEventPacket(uint32_t eventHash, const char* eventId, bool fromPeer = true) {
         // the sender repeats an invitation for a few seconds (UDP may lose it): act on it once
         if (fromPeer && g_handledHash == eventHash && GetTickCount() - g_handledAt < 30000) return;
@@ -91,6 +92,7 @@ namespace {
             return;
         }
         g_joiningEvent = fromPeer ? eventHash : 0;   // a local test start is sent on to the peer
+        if (fromPeer) g_closeMenusUntil = GetTickCount() + 15000;   // close our event menus that may still be open
         g_startingEventHash = eventHash;             // lets the car factory know which event is loading
         // build the same AI opponents as the peer (roster packets arrive just before the event)
         g_usePeerRoster = fromPeer && g_peerRosterN > 0 && GetTickCount() - g_peerRosterAt < 5000;
@@ -156,6 +158,21 @@ namespace {
     uint32_t g_restartSeq = 0, g_peerRestartSeq = 0; DWORD g_ownRestartAt = 0;
 }
 
+// Joined the other player's event while one of the event menus was open here (the rival's race list with
+// "Challenge Rival", the race sheet, "engage event?"): close it with PAD_BACK (FEngHash 0x911AB364).
+static void CloseEventMenusSafe() {
+    static const char* const menus[] = { "InGameRivalChallenge.fng", "InGameRivalBio.fng", "InGameRaceSheet.fng", "EngageEventDialog.fng" };
+    __try {
+        void* fe = nullptr;
+        if (!Mem::Read(0x91CADC, fe) || !fe) return;
+        for (const char* m : menus)
+            if (FEScreens::IsPushed(m)) {
+                ((void(__thiscall*)(void*, uint32_t, const char*, uint32_t))0x516C50)(fe, 0x911AB364, m, 0xFF);
+                LOG("Event: closing %s - we join the other player's event", m);
+            }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 static void EventTickImpl(bool connected) {
     int mode = 0, ctx = 0;
     void* parms = CurrentParms(&mode, &ctx);
@@ -195,6 +212,10 @@ static void EventTickImpl(bool connected) {
         // a partner still on the results of the previous race reports inRace too: only being in OUR event counts
         if (!connected || (int)(now - g_inviteUntil) > 0 || (pr.valid && pr.s.inRace && pr.s.eventHash == g_inviteHash)) g_inviteHash = 0;
         else if ((int)(now - g_inviteNext) >= 0) { g_inviteNext = now + 1500; SendInvite(); }
+    }
+    {   // while joining their event, an event menu of ours may still be open: close it (twice a second)
+        static DWORD next = 0;
+        if (g_closeMenusUntil && (int)(g_closeMenusUntil - GetTickCount()) > 0 && GetTickCount() >= next) { next = GetTickCount() + 500; CloseEventMenusSafe(); }
     }
     if (g_joiningEvent && GetTickCount() - g_joinStartedAt > 20000) {
         LOG("Event: joining timed out");
