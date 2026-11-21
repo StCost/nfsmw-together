@@ -115,7 +115,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Both games build the same AI opponents (car models and tuning)
 - [x] Opponents on the client follow the host's opponents, so the race looks the same on both screens
 - [x] Opponent names match on both PCs
-- [x] Race positions use each player's real progress
+- [x] Race positions use each player's real progress, and the order changes as soon as one passes the other (?)
+- [x] At a race start you stand on different grid slots and see each other's car and name from the countdown on (`SeparateGridSlots`) (?)
 - [x] Start together: whoever loads first waits on the grid until the other is ready (`StartTogether`)
 - [x] Restarting a race restarts it for both of you
 - [x] AI opponents' catch-up (rubber banding) follows whichever player is ahead, so they race the best of you (`CatchUpLeader`)

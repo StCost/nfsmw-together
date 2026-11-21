@@ -274,6 +274,10 @@ namespace Net {
     // normalized-lerp on rotation). Extrapolates up to 250 ms when packets are late.
     // Returns false if there is no data. *extrapolatedMs = how far past the newest packet we are.
     bool SampleRemote(double delayMs, CarState& out, double* extrapolatedMs = nullptr);
+    // The other player's race % now (their newest one moved on by their recent rate, see
+    // NetUtil::RacePctAt; `aheadMs` = how far past our clock mapping to look, e.g. half the ping).
+    // False if there is no data.
+    bool RemoteRacePctNow(double aheadMs, float& pct);
     const char* LastError();
 
 #ifdef MWT_TESTS

@@ -34,6 +34,7 @@ struct Config {
     bool        noSlowMotion = true;     // [Coop] NoSlowMotion - no slow-motion moments while connected (speed traps, pursuit / crash cams)
     bool        catchUpLeader = true;    // [Coop] CatchUpLeader - AI catch-up follows whichever player is ahead
     bool        startTogether = true;    // [Coop] StartTogether - wait on the grid until the other player has loaded
+    bool        separateGridSlots = true; // [Coop] SeparateGridSlots - client: move off the grid slot both games give their own player
     int         syncStoryScenes = 1;     // [Coop] SyncStoryScenes - 0 off, 1 the other game waits while one watches a story scene
                                          // (+ skip only when both voted), 2 also plays the same story movie there
     int         readyDelayMs = 0;        // [Debug] ReadyDelayMs - test: report "ready" this much later
