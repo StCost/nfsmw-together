@@ -40,6 +40,7 @@ second, deletes it and logs `Command '<text>': <result>`. This works with the ga
 | `story` / `story <movie>` | log the story-scene state (movie, scene hash, the other player's scene, hold, rival number) / play a story movie over the world here as the career would, e.g. `story storyfmv_pin11`, `story blacklist_15` |
 | `pursuit` / `uncop` | start a pursuit on you / remove all police cars |
 | `ram` | first call: park 25 m from the other car. Second call (5 s later): hit it at 90 km/h |
+| `ram cop` | the same against the nearest of the other player's police cars shown here |
 | `pos` | log own position, speed and damage |
 | `tp <x> <y> <z>` | move your car there (numbers as `pos` prints them). The first call loads the world at that spot; send the same `tp` again about 5 s later to move. Handy to reach a marker the autopilot won't drive to |
 | `clone` / `unclone` / `cop` | spawn/remove a copy of the other player's car, spawn a cop |
@@ -77,7 +78,7 @@ tools\coop-test.ps1 -Scenario solo -Solo
 | `boss` | H `sent 1 opponent(s)`; C `opponent 1 built as the peer's opponent`, `Ghost acquired: spawned peer car` (the partner is not a racer here). Standings on each PC: that player + the rival. |
 | `restart` | H `restarted here - telling the peer`, C `peer restarted the race - restarting here too`; C is back on the grid with a new countdown. |
 | `cutscene` | One vote: H `voted to skip ... waiting`, intro runs its full ~7.7 s on both. Both vote (`skipnis` on C too): `both voted - skipping`, intro ~3 s. |
-| `pursuit` | The PC that is NOT chased logs `Cops: showing the other player's police car` and `Pursuit: mine no ... theirs heat 1.x, 1 of their cops shown here`. A parked car is busted in ~30 s: that player lands in the garage, the other keeps playing. |
+| `pursuit` | The PC that is NOT chased logs `Cops: showing the other player's police car` and `Pursuit: mine no ... theirs heat 1.x, 1 of their cops shown here`. A parked car is busted in ~30 s: with `SharedPursuits=1` (default) the other player is busted right after (see Shared pursuits below); with 0 that player lands in the garage and the other keeps playing. |
 | `ram` (client parked, `AutoPilot=0`) | H `hit the other player, lost ~60 km/h - sent to them`, C `hit by the other player, pushed by ~35 km/h`, C's `pos` moves ~4 m. No hit line the other way round. |
 | `together` (client has `ReadyDelayMs=6000`) | H `on the grid first - waiting for <name> to load...` then `go (both ready, waited 6.x s)`. |
 | `results` | C stays on its results screen after 15.1.1; H leaves its own and starts 15.1.2. C logs `invited while we're on the results screen - leaving it to join`, then `starting 15.1.2`; both race 15.1.2 together. |
@@ -97,6 +98,26 @@ tools\coop-test.ps1 -Scenario solo -Solo
 | Visual state | watch the partner's car | brake lights when it stops; `Ghost: damage zones now X` after it crashes |
 | Join / leave | start and quit one game | banner `<name> joined` / `left` on the other |
 | Shared race traffic | both PCs `AutoPilot=1`, start 14.4.1 / 12.7.3 / 15.3.1 with `event`, cars close together | C `our traffic car ... now follows the host's car N (same model ...)`; traffic around you is in the same places and models on both screens (a few extra cars on C are its spare own traffic, they keep their own AI); hitting a traffic car on C logs `Collision: hit the other player's car` and pushes it on H. After the finish C `race over`, `released N of our traffic cars`, and 8 s later its own traffic is replaced by mirrors as in free roam |
+
+## Shared pursuits (`SharedPursuits`, `NoPursuitCams`)
+
+Both PCs in free roam, linked, within ~300 m of each other, `TestKeys=1`, `AutoPilot=0` (parked unless a step
+says to drive), `SharedPursuits=1` and `NoPursuitCams=1` on both. At start-up both logs show
+`Pursuit: start camera in co-op off (NoPursuitCams=1)` and `Pursuit: shared pursuits on (minimap cops hooked, radar
+detector hooked)`. While either player is chased, both logs print a status line every 5 s:
+`Pursuit: shared - here <state> [seen], <s> s left, heat <h> | there <state> [seen], <s> s left, heat <h>`.
+
+| Check | How | Pass |
+|---|---|---|
+| Heat | H: `pursuit` | H `Pursuit: ours none -> chase`. Within a second C logs `Pursuit: heat a -> b (the other player's heat)` with b = H's heat; as H's heat climbs, C follows. C's heat never goes down because of H. Same the other way round. |
+| No start camera | H: `pursuit`, drive away from a patrol so a cop starts the chase by itself | H's camera stays behind the car; H logs `Pursuit: start camera skipped (co-op, NoPursuitCams=1)`. Alone (C not connected) the camera flies to the cop as in the unmodded game. |
+| Radar / minimap | H: `cop` (a patrol cop 25 m from H), C drives within 300 m of it | C shows the cop (`Cops: showing the other player's police car`), C logs `Radar: 1 of the other player's cops in the radar detector` and the radar detector beeps. H: `pursuit`: C logs `Minimap: N of the other player's cops shown` and the cops blink red / blue on C's minimap, also while C is not chased. |
+| Ram their cop | H: `cop`. C: `ram cop`, 5 s later `ram cop` again | C `Collision: hit the other player's car <id>`, then `Pursuit: hit the other player's cop <id> - starting a pursuit on us` and `Pursuit: ours none -> chase`. (H's own game may start a chase on H too: its cop was hit) |
+| Busted together | both: `pursuit`; keep both parked | the first one busted (say H) logs `Pursuit: we were busted - the other player gets busted too (count 1)`; C logs `Pursuit: the other player was busted - busting us too` and `Pursuit: busted here too, as the other player was`; both get the game's busted screen. C not chased at that moment: `no pursuit here, starting one to bust us too`, then the same. |
+| Cooldown waits | both: `pursuit`. H: `uncop` (H's cops are gone, H is out of sight), C stays chased | H `Pursuit: the other player is still seen - our cooldown waits (out of sight here)`; H's status line stays `chase` (no `cooldown`) for as long as C is seen, the cooldown bar doesn't run on H. |
+| Escape together | as above, then C: `uncop` | both `Pursuit: both out of sight - cooldown runs as usual` (or `ours waits for theirs`), both `Pursuit: ours chase -> cooldown` within ~1 s, then both `Pursuit: ours cooldown -> escaped` within ~1 s of each other. If a new cop spots C during the cooldown, both go back: H logs `Pursuit: the other player is still seen` and H's state returns to `chase`. |
+| Off | `SharedPursuits=0` on both | `Pursuit: SharedPursuits=0 - each player has their own heat and pursuit`; none of the lines above; busting or escaping affects only the player chased. |
+| In events | start an event with `event 15.1.1` while chased | no heat / bust / cooldown lines while either player is in the event. |
 
 ## Story scenes (`SyncStoryScenes`)
 

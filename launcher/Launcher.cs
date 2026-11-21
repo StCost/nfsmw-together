@@ -130,7 +130,8 @@ class LauncherForm : Form {
     Label myIps = new Label();
     CheckBox skipIntro = Check("Skip intros"), direct = Check("Quick career start"),
              noSafeHouse = Check("Quick leave the safe house"), pursuitRes = Check("Auto-close pursuit results in free roam"),
-             introInput = Check("Menus respond during animations"), overlay = Check("Show status overlay (F8)");
+             introInput = Check("Menus respond during animations"), overlay = Check("Show status overlay (F8)"),
+             noPursuitCam = Check("No pursuit start camera");
     GameButton[] speedBtns = { new GameButton(), new GameButton(), new GameButton() };
     int menuSpeed = 2;
     Label status = new Label { AutoSize = false, ForeColor = Theme.Accent, Font = Theme.Small };
@@ -217,8 +218,9 @@ class LauncherForm : Form {
             "\"Resume Free Roam\" in the safe house starts at once, without the \"are you sure you want to leave?\" question.",
             "After a pursuit in free roam, the result screens (bounty achieved, pursuit summary) close by themselves. Only on this PC. The busted screen is left alone.",
             "Menu buttons react while a menu is still sliding in, so you don't have to wait for the animation.",
-            "Shows the mod's status box in the top-left corner of the game: connection, ping and the other player. F8 switches it in game." };
-        var checks = new CheckBox[] { skipIntro, direct, noSafeHouse, pursuitRes, introInput, overlay };
+            "Shows the mod's status box in the top-left corner of the game: connection, ping and the other player. F8 switches it in game.",
+            "While you play together, the camera stays on your car when the cops start a chase, instead of flying over to look at the police car. Playing alone, the game does what it always does." };
+        var checks = new CheckBox[] { skipIntro, direct, noSafeHouse, pursuitRes, introInput, overlay, noPursuitCam };
         for (int i = 0; i < checks.Length; ++i) { checks[i].Width = W - 24; sp.Controls.Add(checks[i]); tip.SetToolTip(checks[i], hints[i]); }
         var msRow = new BgPanel { Size = new Size(W - 24, 32), Margin = new Padding(0, 4, 0, 0) };
         msRow.Controls.Add(new Label { Text = "Menu animation speed", AutoSize = true, Location = new Point(0, 6), ForeColor = Theme.Text, BackColor = Color.Transparent, Font = Theme.Label });
@@ -330,6 +332,7 @@ class LauncherForm : Form {
         pursuitRes.Checked = Ini.GetB("UI", "SkipPursuitResults", false);
         introInput.Checked = Ini.GetB("UI", "IntroInput", true);
         overlay.Checked = Ini.GetB("Debug", "Overlay", false);
+        noPursuitCam.Checked = Ini.GetB("Coop", "NoPursuitCams", true);
         int ms; if (!int.TryParse(Ini.Get("UI", "MenuSpeed", "2"), out ms)) ms = 2;
         SetSpeed(Math.Max(1, Math.Min(3, ms)));
         SetMode(!Ini.Get("Network", "Mode", "host").Trim().Equals("client", StringComparison.OrdinalIgnoreCase));
@@ -353,6 +356,7 @@ class LauncherForm : Form {
         Ini.SetB("UI", "IntroInput", introInput.Checked);
         Ini.Set("UI", "MenuSpeed", menuSpeed.ToString());
         Ini.SetB("Debug", "Overlay", overlay.Checked);
+        Ini.SetB("Coop", "NoPursuitCams", noPursuitCam.Checked);
         return true;
     }
 

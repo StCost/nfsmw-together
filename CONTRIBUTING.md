@@ -61,6 +61,7 @@ What lives where:
 | `test_packets.cpp` | traffic, event, roster, racer name, restart: real serializer -> handler round trips |
 | `test_file.cpp` | the file transfer (lost / repeated / damaged chunks, request, "no file") and `src/saveutil.h`: names from the network, which save wins, safe file writes |
 | `test_util.cpp` | `src/netutil.h`: name truncation, traffic ids, race traffic binding, Hermite / nlerp, float validation |
+| `test_pursuit.cpp` | `src/pursuitutil.h`: shared heat, cooldown hold / delay, busted together, the pursuit fields of the state packet |
 | `test_config.cpp` | `MWTogether.ini` defaults, parsing, clamping; `perf.h` |
 | `test_fuzz.cpp` | random / mutated / truncated datagrams |
 | `test_loopback.cpp` | the real socket code against a raw UDP socket on localhost |

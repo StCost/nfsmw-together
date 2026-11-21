@@ -53,6 +53,8 @@ void Config::Load(const char* ini) {
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;
     noSlowMotion = ReadInt(ini, "Coop", "NoSlowMotion", 1) != 0;
     syncWeather = ReadInt(ini, "Coop", "SyncWeather", 1) != 0;
+    sharedPursuits = ReadInt(ini, "Coop", "SharedPursuits", 1) != 0;
+    noPursuitCams = ReadInt(ini, "Coop", "NoPursuitCams", 1) != 0;
     syncStoryScenes = ReadInt(ini, "Coop", "SyncStoryScenes", 1);
     if (syncStoryScenes < 0 || syncStoryScenes > 2) syncStoryScenes = 1;
     readyDelayMs = ReadInt(ini, "Debug", "ReadyDelayMs", 0);

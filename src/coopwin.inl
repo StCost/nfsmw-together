@@ -194,10 +194,19 @@ bool Game::TakeCoopWinNotice() { bool v = g_coopWinNotice; g_coopWinNotice = fal
 
 // Test: drive our car into the other player's car (placed 12 m away, moving at 90 km/h towards it),
 // and print our own position, to check that a hit pushes the car that was hit on its own PC.
-static void RamSafe(char* out, size_t n) {
+// `ram cop`: the same against the nearest of the other player's police cars shown here (a mirror).
+static void RamSafe(char* out, size_t n, bool cop) {
     __try {
-        void* me = RigidBodyOf(LocalVehicle()); void* him = RigidBodyOf(g_ghost);
-        if (!me || !him) { strcpy_s(out, n, "no car to ram"); return; }
+        void* me = RigidBodyOf(LocalVehicle()); void* him = cop ? nullptr : RigidBodyOf(g_ghost);
+        if (cop && me) {
+            float best = 1e9f;
+            for (auto& m : g_mirrors) {
+                void* rb = (m.used && m.iv && m.n && (m.s[m.n - 1].e.flags & 1)) ? RigidBodyOf(m.iv) : nullptr;
+                float d = rb ? Dist(RB_GetVec(rb, RB_GetPosition), RB_GetVec(me, RB_GetPosition)) : 1e9f;
+                if (d < best) { best = d; him = rb; }
+            }
+        }
+        if (!me || !him) { strcpy_s(out, n, cop ? "none of the other player's cops shown here" : "no car to ram"); return; }
         const float* hp = RB_GetVec(him, RB_GetPosition);
         const float* mp = RB_GetVec(me, RB_GetPosition);
         float dx = hp[0] - mp[0], dz = hp[2] - mp[2], len = sqrtf(dx * dx + dz * dz);
@@ -209,16 +218,16 @@ static void RamSafe(char* out, size_t n) {
         if (len > 30.f) {
             float park[3] = { hp[0] - dx * 25.f, hp[1] + 0.3f, hp[2] - dz * 25.f };
             RB_SetVec(me, RB_SetPosition, park); RB_SetVec(me, RB_SetLinearVelocity, zero); RB_SetVec(me, RB_SetAngularVelocity, zero);
-            sprintf_s(out, n, "parked 25 m from the other player - send ram again in 5 s");
+            sprintf_s(out, n, cop ? "parked 25 m from their cop - send ram cop again in 5 s" : "parked 25 m from the other player - send ram again in 5 s");
             return;
         }
         float pos[3] = { hp[0] - dx * 12.f, hp[1] + 0.3f, hp[2] - dz * 12.f }, vel[3] = { dx * 25.f, 0, dz * 25.f };
         g_testJumpOkUntil = GetTickCount() + 400;      // this short hop is the test itself, not a teleport to ignore
         RB_SetVec(me, RB_SetPosition, pos); RB_SetVec(me, RB_SetLinearVelocity, vel); RB_SetVec(me, RB_SetAngularVelocity, zero);
-        sprintf_s(out, n, "ramming the other player from 12 m at 90 km/h");
+        sprintf_s(out, n, cop ? "ramming the other player's cop from 12 m at 90 km/h" : "ramming the other player from 12 m at 90 km/h");
     } __except (EXCEPTION_EXECUTE_HANDLER) { strcpy_s(out, n, "exception"); }
 }
-std::string Game::DebugRam() { char b[96] = "not in game"; if (g_ok && GameFlowState() == 6) RamSafe(b, sizeof(b)); return b; }
+std::string Game::DebugRam(bool cop) { char b[96] = "not in game"; if (g_ok && GameFlowState() == 6) RamSafe(b, sizeof(b), cop); return b; }
 static void PosSafe(char* out, size_t n) {
     __try {
         void* me = RigidBodyOf(LocalVehicle());

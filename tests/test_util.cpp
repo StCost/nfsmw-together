@@ -175,6 +175,14 @@ TEST(util_validation_rejects_bad_floats) {
     b = s; b.lapPct = -50.0f;              CHECK(!ValidCarState(b));
     b = s; b.laps = -3;                    CHECK(!ValidCarState(b));
     b = s; b.checkpoints = 30000;          CHECK(!ValidCarState(b));
+    // shared pursuit fields
+    b = s; b.heat100 = MAX_HEAT100; b.coolLeft10 = MAX_COOL_LEFT10; b.pursuitFlags = PURSUIT_KNOWN_BITS; b.bustSeq = 255;
+    CHECK(ValidCarState(b));
+    b = s; b.heat100 = MAX_HEAT100 + 1;    CHECK(!ValidCarState(b));
+    b = s; b.heat100 = 0xFFFF;             CHECK(!ValidCarState(b));
+    b = s; b.coolLeft10 = MAX_COOL_LEFT10 + 1; CHECK(!ValidCarState(b));
+    b = s; b.pursuitFlags = 0x10;          CHECK(!ValidCarState(b));   // a bit this build doesn't know
+    b = s; b.pursuitFlags = 0x80;          CHECK(!ValidCarState(b));
     b = s; b.racePct = 100.0f; b.laps = 3; CHECK(ValidCarState(b));    // a finished race
 
     TrafficEntry e = th::MakeTrafficEntry(1, 100.0f);

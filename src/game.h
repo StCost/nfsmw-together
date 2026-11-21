@@ -46,7 +46,7 @@ namespace Game {
     const char* StartStatus();          // "waiting for <name> to load..." while we hold the start
     uint32_t CurrentEventHash();        // event we are in, 0 = none
     std::string DebugRestart();
-    std::string DebugRam();             // test: hit the other player's car
+    std::string DebugRam(bool cop = false);   // test: hit the other player's car (cop: their nearest police car)
     std::string DebugPos();             // test: our position and speed
     std::string DebugTeleport(const char* args);   // test: 'tp x y z' puts our car there (2 m up, stopped)
     std::string DebugNisSkip();         // test: press skip on the current cutscene
@@ -87,6 +87,8 @@ namespace Game {
     void TrafficTick(bool connected, const Net::Snapshot& peer);
     void PursuitTick(bool connected, const Net::Snapshot& peer);   // cops may chase the other player
     int16_t LocalPursuitHeat();
+    bool InstallPursuitHooks();                 // [Coop] SharedPursuits (minimap / radar) and NoPursuitCams
+    void FillSharedPursuit(CarState& s);        // heat100 / pursuitFlags / bustSeq / coolLeft10 for the state packet
     int  TrafficCount();          // host: cars sent last tick; client: mirror cars alive
     bool TrafficSuppressed();     // client: own traffic switched off
 

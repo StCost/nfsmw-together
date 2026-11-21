@@ -1,5 +1,6 @@
 #include "game.h"
 #include "netutil.h"
+#include "pursuitutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
@@ -822,6 +823,7 @@ bool Game::InstallVehicleFactoryHook() {
     InstallWeatherSync();
     InstallMinimapHook();
     InstallWorldMapHook();
+    InstallPursuitHooks();
     LOG("Hooked vehicle factory (races: AI racer -> peer car)");
     return true;
 }
