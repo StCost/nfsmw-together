@@ -40,7 +40,8 @@ TEST(pursuit_heat_gap_starts_over) {
     CHECK_EQ(HeatToTake(t, 2.0f, 200), 0);
     CHECK_EQ(HeatToTake(t, 2.0f, 0), 0);                 // they went into a race / menu: unknown
     CHECK_EQ(t.lastPeer, 0);
-    CHECK_NEAR(HeatToTake(t, 1.0f, 200), 2.0f, 1e-4);   // back in free roam: the hotter one again
+    CHECK_EQ(HeatToTake(t, 1.0f, 200), 0);               // back after a gap: only a baseline (we may have lost ours on purpose)
+    CHECK_NEAR(HeatToTake(t, 1.0f, 250), 2.5f, 1e-4);   // a new rise there is copied again
 }
 
 TEST(pursuit_heat_rounding_never_ratchets) {

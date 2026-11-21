@@ -17,10 +17,13 @@ namespace SharedPursuit {
     // higher than their last one) and hotter than ours. So when one of you gets heat the other gets the
     // same, the hotter of the two wins, and a heat that drops on one side (busted, another car) is
     // neither copied nor pushed back up by the other side's old value.
-    struct HeatTracker { uint16_t lastPeer = 0; };
+    struct HeatTracker { uint16_t lastPeer = 0; bool synced = false; };   // synced: had their first value this session
     inline float HeatToTake(HeatTracker& t, float mine, uint16_t peer100) {
         if (peer100 == 0 || peer100 > MAX_HEAT100) { t.lastPeer = 0; return 0.f; }   // unknown / not in free roam
-        bool fresh = t.lastPeer == 0 || peer100 > t.lastPeer;
+        // the very first value of the session is taken (both start equal); after a gap (race, shop, menu)
+        // the first value is only a baseline, so a heat we lost meanwhile (respray, busted) isn't pushed back
+        bool fresh = t.lastPeer ? peer100 > t.lastPeer : !t.synced;
+        t.synced = true;
         t.lastPeer = peer100;
         float peer = peer100 / 100.f;
         if (!fresh || !(mine == mine)) return 0.f;

@@ -609,6 +609,7 @@ namespace {
     void* g_keepCars[64] = {};                // every car we spawned (the other player's car, mirrors)
     void* g_removedCars[16] = {}; int g_removedNext = 0;   // ours the game deleted: the address may hold another car now
     void (*g_onCarRemoved)(void*) = nullptr;
+    void (*g_onMirrorRemoved)(void*) = nullptr;     // traffic.inl: drop any mirror that used this car
 
     bool IsKeptCar(void* iv) { for (void* k : g_keepCars) if (k && k == iv) return true; return false; }
     void KeepCar(void* iv) {
@@ -628,6 +629,7 @@ namespace {
             LOG("Vehicle cache: game removed our car %p", iv);
             ForgetCar(iv);
             g_removedCars[g_removedNext] = iv; g_removedNext = (g_removedNext + 1) % 16;
+            if (g_onMirrorRemoved) g_onMirrorRemoved(iv);
             if (g_onCarRemoved) g_onCarRemoved(iv);
         }
     }
@@ -836,7 +838,11 @@ bool Game::InstallVehicleFactoryHook() {
 }
 
 void Game::OnFlow(int flow) {
-    if (flow != 6) for (auto& o : g_aiOv) o.iv = nullptr;   // world unloading: the cars (and their AI) are gone
+    if (flow != 6) {
+        for (auto& o : g_aiOv) o.iv = nullptr;   // world unloading: the cars (and their AI) are gone
+        for (void*& k : g_keepCars) k = nullptr;
+        for (void*& r : g_removedCars) r = nullptr;
+    }
     static int last = -1;
     if (flow != last) {
         if (flow == 4) { g_racerReplacedThisLoad = false; g_replacedRacer = nullptr; g_spawnFails = 0; } // new world loading
@@ -928,6 +934,12 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
 
     if (!enabled) { Game::ReleaseGhost(); RET("disabled (F9)"); }
     if (Game::GameFlowState() != 6) { g_ghost = nullptr; Game::ReleaseGhost(); for (auto& o : g_aiOv) o.iv = nullptr; RET("waiting (not in game)"); }
+    // Drop the ghost if the game removed that car.
+    if (g_ghost && !ListContains(g_ghostList, g_ghost)) {
+        LOG("Ghost car left its vehicle list (despawned)");
+        g_ghost = nullptr;
+        Game::ReleaseGhost();
+    }
     {   // their pause menu / a short gap reports "no car" while they're still in the world: keep the car
         // standing where it was for a while instead of removing it and spawning it again (each new spawn
         // can come out wrong, and it reappeared next to us)
@@ -945,12 +957,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         }
     }
 
-    // Drop the ghost if the game removed that car.
-    if (g_ghost && !ListContains(g_ghostList, g_ghost)) {
-        LOG("Ghost car left its vehicle list (despawned)");
-        g_ghost = nullptr;
-        Game::ReleaseGhost();
-    }
+
 
     // Using a borrowed traffic car but a spawn retry is due: give it back and try spawning the real car.
     if (g_ghost && g_ghostKind == GK_TRAFFIC && Net::PeerCar() && GetTickCount() >= g_nextSpawnTry) Game::ReleaseGhost();

@@ -301,6 +301,7 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
         g_sp.lastStatus = status;
     }
     // ---- 4. busted: count our own busts; the other game follows when the count changes ----
+    if (!pursuit || !busted) g_sp.lastBustedPursuit = nullptr;   // the next pursuit may get the same address
     if (pursuit && busted && pursuit != g_sp.lastBustedPursuit) {
         g_sp.lastBustedPursuit = pursuit;
         g_sp.pendingBustUntil = 0;
