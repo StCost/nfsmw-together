@@ -167,8 +167,11 @@ namespace {
         if (!key || !Mem::Read(0x91E004, db) || !db) return false;
         void* back = ((void*(__thiscall*)(void*, uint32_t))0x600A20)(db, key);
         if (back != parms) { LOG("Race: activity key %08X does not lead back to this race (%p, not %p) - not posting the placement", key, back, parms); return false; }
+        // the message carries the racer's handle (*(ISimable+8)), like the native NotifyRacePlacement 0x60AA00
+        uint32_t handle = 0;
+        if (!Mem::Read((uintptr_t)sim + 8, handle) || !handle) { LOG("Race: our racer has no handle - not posting the placement"); return false; }
         alignas(4) uint8_t msg[0x20] = {};
-        ((void*(__thiscall*)(void*, uint32_t, void*, int))0x6044C0)(msg, key, sim, placing);
+        ((void*(__thiscall*)(void*, uint32_t, uint32_t, int))0x6044C0)(msg, key, handle, placing);
         ((void(__thiscall*)(void*, uint32_t))0x654AF0)(msg, 0x20D60DBF);
         return true;
     }
@@ -216,6 +219,12 @@ static void CoopFinishTickImpl() {
     in.restartPending = restart != 0; in.cutscene = NisActive(); in.alreadyTried = g_forcedFinishTried;
     in.raceType = in.peerWon ? ((int(__thiscall*)(void*))0x5FAA20)(parms) : -1;
     if (!CoopRace::ShouldFinishAsWinner(in)) return;
+    {   // not under the pause menu / map (co-op keeps the race running there), and not before we drove off
+        int req = 0; Mem::Read(0x91CAE4, req);
+        if (req > 0 || FEScreens::IsPushed("Pause_Main.fng") || FEScreens::IsPushed("WorldMapMain.fng")) return;   // next tick
+        float pct = 0.f; if (ri) Mem::Read((uintptr_t)ri + 0x18, pct);
+        if (!(pct > 1.0f)) return;
+    }
     g_forcedFinishTried = true;
     void* sim = LocalSimable();
     if (!sim) return;

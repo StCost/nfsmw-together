@@ -434,6 +434,9 @@ bool Game::ShowChyron(const char* title, const char* line2, const char* line3) {
                 return true;
             }
         }
-        return false;     // not shown (yet): the caller uses the corner line
-    } __except (EXCEPTION_EXECUTE_HANDLER) { LOG("Notice: exception in the game's chyron"); return false; }
+        return true;      // summoned; only the "show at once" backdate didn't apply (it shows after the game's delay)
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        int b = 0; if (Mem::Read(0x8EE348, b) && b == 0 && NisActive()) { int one = 1; Mem::Write(0x8EE348, one); }   // give the cutscene its hold back
+        LOG("Notice: exception in the game's chyron"); return false;
+    }
 }

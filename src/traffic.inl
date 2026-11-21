@@ -101,8 +101,10 @@ namespace {
         if (((bool(__fastcall*)(void*, void*, const float*))TrafficSpotBlockedFn)(self, nullptr, pos)) return true;
         return SpotNearPeer(pos, false);
     }
+    bool g_localChased = false;   // set by pursuit.inl each tick
     bool __fastcall hk_CopSpotOk(void* self, void*, const float* pos, int a, int b, int c, int d) {
         if (!((bool(__fastcall*)(void*, void*, const float*, int, int, int, int))CopSpotOkFn)(self, nullptr, pos, a, b, c, d)) return false;
+        if (g_localChased) return true;   // a pursuit on us: its cops may come from anywhere (as in the plain game)
         return !SpotNearPeer(pos, true);
     }
 

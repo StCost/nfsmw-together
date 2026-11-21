@@ -276,6 +276,7 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
     bool here = on && FreeRoamHere();
     void* me = here ? LocalVehicle() : nullptr;
     void* pursuit = me ? PursuitOf(me) : nullptr;
+    g_localChased = pursuit != nullptr;
 
     // ---- the other player is chased: so are we, wherever we are (one shared pursuit) ----
     if (me && !pursuit && peer.valid && (peer.s.pursuitFlags & PURSUIT_ACTIVE) && peer.s.gameFlowState == 6 && !peer.s.eventHash) {
