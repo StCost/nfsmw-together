@@ -1332,29 +1332,11 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         if (!g_protectHolding && Dist(lp, s.pos) > (float)g_cfg.safeDistance) {
             g_separated = true;
             LOG("Spawn protection off: players are %.0f m apart", Dist(lp, s.pos));
-        } else if (Dist(lp, s.pos) < 4.f) {   // everywhere: held only while it would stand inside our car
-            // (in any event - also a rival race, where their car isn't a racer - it drives from the first
-            // frame and is only held while it would stand inside ours)
-            // In a race their car drives from the first frame (collisions stay off until the two are
-            // apart): it is only held while it would stand inside ours.
-            float zero[3] = { 0, 0, 0 };
-            // Blink + ghost only the OTHER player's car (the game's post-reset state), like after a reset:
-            // each player sees the other blink and pass through, never themselves. Skipped during
-            // cutscenes, because then the local car isn't human-driven and lrbP is null.
-            // (no blinking: the user doesn't want it; collisions are off for the ghost during protection)
-            if (Dist(lp, cur) < 4.f) {   // standing in our car: put it behind us, a little to the left, facing our way
-                float aside[3] = { lp[0] + 5.f, lp[1] + 0.5f, lp[2] };
-                BehindLeftOf(lrbP, aside);
-                RB_SetVec(rb, RB_SetPosition, aside);
-                const float* q = RB_GetVec(lrbP, RB_GetOrientation);
-                float qq[4] = { q[0], q[1], q[2], q[3] };
-                VCall<void(__thiscall*)(void*, const float*)>(rb, RB_SetOrientationQuat)(rb, qq);
-            }
-            RB_SetVec(rb, RB_SetLinearVelocity, zero);
-            RB_SetVec(rb, RB_SetAngularVelocity, zero);
-            ClearCarControls(g_ghost);
-            sprintf_s(out, outLen, "%s  spawn protection (until %d m apart)", g_ghostName, g_cfg.safeDistance);
-            return;
+        } else if (Dist(lp, s.pos) < 4.f) {
+            // never frozen: their car moves with them all the time, collisions between the two cars stay off
+            // until they are apart. Only while they would stand inside our car (both games put their player on
+            // the same spot: safe house, a rival race start) it is shown behind us, a little to the left.
+            BehindLeftOf(lrbP, s.pos);
         }
     }
 
