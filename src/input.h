@@ -29,6 +29,15 @@ namespace Macro {
     bool Active();
 }
 
+// Game controllers (pad.cpp): pads connected / reconnected while the game runs ([Input] GamepadHotplug)
+// and keeping the player's controller bindings when the game starts without the pad
+// ([Input] KeepPadBindings).
+namespace Pad {
+    bool InstallHooks();              // call from DllMain, after the config is loaded
+    void OnDeviceChange();            // WM_DEVICECHANGE on the game window
+    void Tick(int gameFlowState);     // once per frame, game thread
+}
+
 // Auto-start: from the title screen, keep tapping Enter until the game starts loading the career.
 namespace AutoStart {
     void Tick(int gameFlowState);

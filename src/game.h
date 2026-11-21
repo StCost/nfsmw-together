@@ -37,6 +37,7 @@ namespace Game {
     void PauseRuleTick(bool connected);
     std::string ToggleAutopilot();
     bool ShowChyron(const char* title, const char* line2, const char* line3);   // the game's song-title banner with our text
+    void ChyronTick();                  // keeps our banner up for [UI] NoticeSeconds (every frame)
     bool CoopAllowed();
     bool InstallNoSlowMotion();
     bool InstallWeatherSync();          // [Coop] SyncWeather: the client shows the host's rain

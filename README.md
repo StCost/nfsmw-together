@@ -73,6 +73,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Launcher (`MWTogetherLauncher.exe` next to `speed.exe`) in the game's style: name, host or join, the host's IP, start options under Settings, then Play
 - [x] A short notice in the corner when the other player joins or leaves, even with the overlay hidden.
 - [x] Notifications use game's own UI: the EA Trax banner (where songs are announced) shows "<name> joined / left";
+- [x] Notices stay on screen for 10 seconds, the game's banner included, without sliding in again (`[UI] NoticeSeconds`) (?)
 - [x] Joining while the other player is in a race: you roam freely, get a notice, and go together into the next event (?)
 - [x] Strangers can't interfere: each game ignores network packets from anyone except the player it connected to
 - [x] Event starts and restarts are repeated for a few seconds, so a lost packet can't leave you in different races
@@ -141,13 +142,15 @@ yours first if you have one), start the game and pick the `MWT` profile.
 
 
 </details>
-<details><summary><b>Quality of life (settings in <code>[Start]</code> and <code>[UI]</code>)</b></summary>
+<details><summary><b>Quality of life (settings in <code>[Start]</code>, <code>[UI]</code> and <code>[Input]</code>)</b></summary>
 
 - [x] Load straight into career free roam after the profile (`DirectFreeRoam`); optionally skip the intro logos and movie (`SkipIntro`, off by default)
 - [x] The "load complete" screen after the title confirms itself (`SkipLoadComplete`, on by default)
 - [x] No "leave the safe house?" question (`SkipLeaveSafeHouseDialog`)
 - [x] Menus react while their opening animation plays, and animate 2x faster (`IntroInput`, `MenuSpeed`) to improve UI responsivness
 - [x] Optional: close the pursuit result screens in free roam by itself ("Bounty achieved" and the pursuit summary), off by default (`SkipPursuitResults`). Getting busted still shows the fine screen
+- [x] A gamepad or wheel plugged in while the game is running (USB or Bluetooth) works right away, and so does one that dropped out and came back; your bindings stay as they were (`[Input] GamepadHotplug`, launcher: Detect gamepads connected while playing) (?)
+- [x] Starting the game without your pad no longer resets its controller bindings to the defaults (`[Input] KeepPadBindings`) (?)
 
 
 </details>
