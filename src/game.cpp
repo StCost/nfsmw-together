@@ -235,6 +235,9 @@ namespace {
     DWORD    g_nextSpawnTry = 0;            // backoff between spawn attempts
     void*    g_replacedRacer = nullptr;            // racer built as the peer's car by the factory hook
     bool     g_racerReplacedThisLoad = false;
+    DWORD    g_ghostYieldUntil = 0;            // event start: our copy of their car may be removed for room
+    float    g_peerSlot[3] = {};                    // where the race built that racer (its grid slot)
+    bool     g_peerSlotValid = false;
     uint32_t g_origRacer[1] = {};
     void*    g_origRacerCustom = nullptr;
     void*    g_origRacerMatched = nullptr;
@@ -644,7 +647,9 @@ namespace {
     }
 
     int __fastcall Cache_OnQuery(void*, void*, void* iv, void* /*asking*/) {
-        return (iv && iv == g_ghost) ? 0 /*want*/ : 1 /*don't care*/;
+        // while an event we join builds its racers, the game may take our copy of their car for room
+        bool yield = g_ghostYieldUntil && (int)(GetTickCount() - g_ghostYieldUntil) < 0;
+        return (iv && iv == g_ghost && !yield) ? 0 /*want*/ : 1 /*don't care*/;
     }
 
     uint32_t VehicleKey(void* iv) {
@@ -772,13 +777,17 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
         r.name[0] = 0;
     }
     if (replaced && !simable) {
-        LOG("Race: peer car model %08X not loaded - keeping the original AI car", vp->carType);
-        replaced = false;
-        g_racerReplacedThisLoad = false;     // let the next racer try (its model may be loaded)
+        // Their model isn't loaded here (seen when they started the event far away from us). The racer
+        // is built as the game wanted it and still becomes theirs - their name, their progress, driven
+        // by their position - so they are in the standings, only in this AI car's body. (Before, no
+        // racer was theirs: they were missing from the standings and their car was spawned outside.)
+        uint32_t want = vp->carType;
         vp->carType = g_origRacer[0];
         vp->customization = g_origRacerCustom;
         vp->matched = g_origRacerMatched;
         simable = ((Fn)Addr::PVehicleConstruct)(p);
+        if (simable) LOG("Race: the other player's car model %08X isn't loaded here - their racer keeps this AI car's model (%08X)", want, vp->carType);
+        else { replaced = false; g_racerReplacedThisLoad = false; LOG("Race: racer for the other player could not be built (model %08X)", want); }
     }
     if (replaced && simable) {
         void* object = nullptr;
@@ -787,6 +796,9 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
             g_replacedRacer = ((FindFn)Addr::UCOM_Find)(object, 0x4040E0);
         }
         LOG("Race: AI racer built as peer car (key %08X) -> %p", vp->carType, g_replacedRacer);
+        g_peerSlotValid = vp->initialPos && Mem::SafeRead(vp->initialPos, g_peerSlot, sizeof(g_peerSlot)) &&
+                          NetUtil::FiniteWithin(g_peerSlot, 3, NetUtil::MAX_POS);
+        if (g_peerSlotValid) LOG("Race: the other player's grid slot %.1f %.1f %.1f", g_peerSlot[0], g_peerSlot[1], g_peerSlot[2]);
     }
     return simable;
 }
@@ -925,6 +937,75 @@ void Game::ReleaseGhost() {
     g_separated = false;
 }
 
+// Race standings: the other player's nickname (GRacerInfo::mName, +0x08) and progress on their racer.
+// Every frame from the moment their racer is ours - also during the intro cutscene and while spawn
+// protection holds their car - so the standings show them right from the countdown (the progress that
+// decides the order is put in before the game sorts, see hk_RacerUpdate in coopwin.inl).
+static void PeerRacerInfoTick() {
+    static char peerName[32];
+    const std::string& pn = Net::Stats().peerName;
+    if (pn.empty() || !g_ghost) return;
+    NetUtil::CopyHudName(peerName, pn.c_str());       // HUD slots are 16 bytes
+    void* rs = nullptr;
+    Mem::Read(0x91E000, rs);
+    void* sim = VCall<void* (__thiscall*)(void*)>(g_ghost, IV_GetSimable)(g_ghost);
+    if (!rs || !sim) return;
+    void* ri = ((void*(__thiscall*)(void*, void*))0x5E8B20)(rs, sim);  // GRaceStatus::GetRacerInfo(ISimable*)
+    static void* loggedRi = nullptr;
+    if (ri != loggedRi) { loggedRi = ri; LOG("Race: peer racer info %p (ghost %p, kind %d) name %s", ri, g_ghost, (int)g_ghostKind, peerName); }
+    if (!ri) return;
+    const char* nm = peerName; Mem::Write((uintptr_t)ri + 0x08, nm);
+    // (+0x21 is not written: it isn't reliably "finished" and ranked a parked peer 1st)
+    float used = 0;
+    if (!WritePeerProgress(ri, &used)) return;
+    static DWORD nextLog = 0;
+    if (GetTickCount() >= nextLog) {
+        nextLog = GetTickCount() + 5000;
+        const CarState& ls = Net::Latest().s;
+        int rank = 0; Mem::Read((uintptr_t)ri + 0x10, rank);
+        void* mri = RacerInfoOfLocal();
+        int myRank = 0; float myPct = 0;
+        if (mri) { Mem::Read((uintptr_t)mri + 0x10, myRank); Mem::Read((uintptr_t)mri + 0x18, myPct); }
+        LOG("Race: peer pct %.3f (sent %.3f) lap %.3f laps %d cps %d fin %d -> rank %d | me pct %.3f rank %d",
+            used, ls.racePct, ls.lapPct, (int)ls.laps, (int)ls.checkpoints, (int)ls.finished, rank, myPct, myRank);
+    }
+}
+
+// Client, race start: both games put their own player on the player's grid slot, so on each screen the
+// other player's car would stand inside ours (spawn protection then held it still until the two were
+// 10 m apart: their car stood on the grid for the first seconds of the race). The client moves its car
+// to the slot its game built the host's racer on - the same slot the host's game built the client's
+// racer on - so both screens agree and the cars stand apart from the countdown on.
+static void TakePeerSlotTick(const Net::Snapshot& latest, void* ghostRb) {
+    static void* slotOf = nullptr; static uint8_t lastRestart = 0; static DWORD windowUntil = 0;
+    if (g_cfg.isHost || !g_cfg.separateGridSlots || g_ghostKind != GK_RACER || g_ghost != g_replacedRacer || !g_peerSlotValid) return;
+    uint8_t restart = 0; Mem::Read(0x91CF28, restart);
+    // a new race (new racer) or a restart (the game puts everyone back on the grid) opens the window
+    if (slotOf != g_replacedRacer || (restart && !lastRestart)) { slotOf = g_replacedRacer; windowUntil = GetTickCount() + 60000; }
+    lastRestart = restart;
+    if (!windowUntil || (int)(GetTickCount() - windowUntil) > 0) return;
+    void* rs = nullptr; int mode = 0;
+    if (!Mem::Read(0x91E000, rs) || !rs || !Mem::Read((uintptr_t)rs + 0x1960, mode) || mode != 1) return;
+    if (!latest.valid || !latest.s.hasCar || !latest.s.inRace || latest.s.eventHash != Game::CurrentEventHash()) return;
+    void* lrb = RigidBodyOf(LocalVehicle());
+    if (!lrb) return;
+    const float* lp = RB_GetVec(lrb, RB_GetPosition);
+    const float* lv = RB_GetVec(lrb, RB_GetLinearVelocity);
+    float mySpeed = sqrtf(lv[0] * lv[0] + lv[1] * lv[1] + lv[2] * lv[2]);
+    if (!NetUtil::ShouldTakePeerSlot(lp, mySpeed, latest.s.pos, latest.s.speedMps, g_peerSlot)) return;
+    float from[3] = { lp[0], lp[1], lp[2] };
+    float to[3] = { g_peerSlot[0], g_peerSlot[1] + 0.2f, g_peerSlot[2] }, zero[3] = { 0, 0, 0 };
+    RB_SetVec(lrb, RB_SetPosition, to);                 // grid slots face the same way: keep our heading
+    RB_SetVec(lrb, RB_SetLinearVelocity, zero); RB_SetVec(lrb, RB_SetAngularVelocity, zero);
+    if (ghostRb) {                                      // their car onto the slot we left (where they are)
+        RB_SetVec(ghostRb, RB_SetOrientationQuat, latest.s.rot);
+        RB_SetVec(ghostRb, RB_SetPosition, latest.s.pos);
+        RB_SetVec(ghostRb, RB_SetLinearVelocity, zero); RB_SetVec(ghostRb, RB_SetAngularVelocity, zero);
+    }
+    windowUntil = 0;
+    LOG("Start: we stood on the host's grid slot - moved to the slot of the host's racer (%.1f m)", Dist(from, to));
+}
+
 static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& prev, bool enabled, char* out, size_t outLen) {
 #define RET(msg) do { strncpy_s(out, outLen, msg, _TRUNCATE); return; } while (0)
     LARGE_INTEGER now; QueryPerformanceCounter(&now);
@@ -1049,6 +1130,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         LOG("Ghost acquired: %s %p (%s)", g_ghostKind == GK_RACER ? (iv == g_replacedRacer ? "racer built as peer car" : "AI racer")
                                           : g_ghostKind == GK_SPAWNED ? "spawned peer car" : "traffic car", iv, g_ghostName);
     }
+    PeerRacerInfoTick();
 
     void* rb = RigidBodyOf(g_ghost);
     if (!rb) {
@@ -1068,6 +1150,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
 
     SetStreamPeer(rb);   // keep the world (and full physics) loaded around the other player too
     if (NisActive()) { g_protectHoldReset = true; ClearCarControls(g_ghost); sprintf_s(out, outLen, "%s  (cutscene)", g_ghostName); return; }
+    TakePeerSlotTick(latest, rb);
 
     // --- target state: snapshot interpolation ~InterpDelayMs in the past (smooth, no guessing) ---
     CarState s = latest.s;
@@ -1118,7 +1201,9 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         if (!g_protectHolding && Dist(lp, s.pos) > (float)g_cfg.safeDistance) {
             g_separated = true;
             LOG("Spawn protection off: players are %.0f m apart", Dist(lp, s.pos));
-        } else {
+        } else if (g_ghostKind != GK_RACER || Dist(lp, s.pos) < 4.f) {
+            // In a race their car drives from the first frame (collisions stay off until the two are
+            // apart): it is only held while it would stand inside ours.
             float zero[3] = { 0, 0, 0 };
             // Blink + ghost only the OTHER player's car (the game's post-reset state), like after a reset:
             // each player sees the other blink and pass through, never themselves. Skipped during
@@ -1169,7 +1254,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
     float sep = -1.f;
     if (void* lrb = RigidBodyOf(LocalVehicle())) {
         sep = Dist(RB_GetVec(lrb, RB_GetPosition), newPos);
-        if (sep > (float)g_cfg.safeDistance) g_separated = true;
+        if (sep > (float)g_cfg.safeDistance && !g_protectHolding) g_separated = true;
         // Momentum for the car we hit: their car is moved by the network here, so our impact only
         // stops US. When our velocity changes abruptly right next to their car (far more than braking
         // can do in one frame), send them what we lost; their game adds part of it to their own car.
@@ -1206,46 +1291,6 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         SetCollisions(g_ghost, wantCollide);
         g_ghostCollide = wantCollide;
         LOG("Ghost collisions %s", wantCollide ? "ON" : "OFF");
-    }
-
-    // Race standings: show the other player's nickname on their racer (GRacerInfo::mName, +0x08).
-    {   // any ghost kind: in a race the peer's car is a racer whatever way we got it
-        static char peerName[32];
-        const std::string& pn = Net::Stats().peerName;
-        if (!pn.empty()) {
-            NetUtil::CopyHudName(peerName, pn.c_str());       // HUD slots are 16 bytes
-            void* rs = nullptr;
-            Mem::Read(0x91E000, rs);
-            void* sim = VCall<void* (__thiscall*)(void*)>(g_ghost, IV_GetSimable)(g_ghost);
-            if (rs && sim) {
-                void* ri = ((void*(__thiscall*)(void*, void*))0x5E8B20)(rs, sim);  // GRaceStatus::GetRacerInfo(ISimable*)
-                static void* loggedRi = nullptr;
-                if (ri != loggedRi) { loggedRi = ri; LOG("Race: peer racer info %p (ghost %p, kind %d) name %s", ri, g_ghost, (int)g_ghostKind, peerName); }
-                if (ri) {
-                    const char* nm = peerName; Mem::Write((uintptr_t)ri + 0x08, nm);
-                    // their real race progress, so the standings rank them by where they really are
-                    const CarState& ls = latest.s;
-                    if (ls.inRace) {
-                        int laps = ls.laps, cps = ls.checkpoints;
-                        Mem::Write((uintptr_t)ri + 0x18, ls.racePct);
-                        Mem::Write((uintptr_t)ri + 0x24, ls.lapPct);
-                        Mem::Write((uintptr_t)ri + 0x28, laps);
-                        Mem::Write((uintptr_t)ri + 0x2C, cps);
-                        // (+0x21 is not written: it isn't reliably "finished" and ranked a parked peer 1st)
-                        static DWORD nextLog = 0;
-                        if (GetTickCount() >= nextLog) {
-                            nextLog = GetTickCount() + 5000;
-                            int rank = 0; Mem::Read((uintptr_t)ri + 0x10, rank);
-                            void* mri = RacerInfoOfLocal();
-                            int myRank = 0; float myPct = 0;
-                            if (mri) { Mem::Read((uintptr_t)mri + 0x10, myRank); Mem::Read((uintptr_t)mri + 0x18, myPct); }
-                            LOG("Race: peer pct %.3f lap %.3f laps %d cps %d fin %d -> rank %d | me pct %.3f rank %d",
-                                ls.racePct, ls.lapPct, laps, cps, (int)ls.finished, rank, myPct, myRank);
-                        }
-                    }
-                }
-            }
-        }
     }
 
     sprintf_s(out, outLen, "%s  jitter %.1fmm  extrap %.0fms  dist %.0fm  err %.1fm  coll %s%s", g_ghostName, g_jitterMm, g_extrapMs, sep, err,

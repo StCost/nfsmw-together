@@ -96,9 +96,18 @@ namespace {
         g_usePeerRoster = fromPeer && g_peerRosterN > 0 && GetTickCount() - g_peerRosterAt < 5000;
         g_peerRosterNext = 0;
         if (fromPeer) LOG("Event: using %s", g_usePeerRoster ? "the peer's opponents" : "our own opponents (no roster received)");
-        // free the vehicle budget so every racer can be built: our free-roam copy of the peer's car
-        // and the traffic mirrors go (the race builds the peer's car itself)
-        Game::ReleaseGhost();
+        // free the vehicle budget so every racer can be built: the traffic mirrors go. Our free-roam copy
+        // of the peer's car stays until the race has built their racer: while a car of that model
+        // exists the model stays loaded, so the racer can be built as their car. (Removed first, a
+        // partner who started far from us often had no model left here: their racer came out wrong or
+        // not at all.) The game may still take that car if it needs the room (see Cache_OnQuery).
+        {
+            const CarInfo* pc = Net::PeerCar();
+            if (g_ghost && g_ghostKind == GK_SPAWNED && pc && g_spawnedKey == pc->carKey && !IsChallengeEvent(parms)) {
+                g_ghostYieldUntil = GetTickCount() + 15000;
+                LOG("Event: keeping our copy of the other player's car until their racer is built");
+            } else Game::ReleaseGhost();
+        }
         g_racerReplacedThisLoad = false;   // a new race (also when started from free roam: no world load)
         g_replacedRacer = nullptr;
         g_noSpawnUntil = GetTickCount() + 8000;

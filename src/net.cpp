@@ -709,6 +709,23 @@ bool Net::SampleRemote(double delayMs, CarState& out, double* extrapolatedMs) {
     return true;
 }
 
+bool Net::RemoteRacePctNow(double aheadMs, float& pct) {
+    if (g_ringCount == 0) return false;
+    const TimedSnap& n = g_ring[(g_ringHead + 31) % 32];
+    // the rate over ~150 ms (one frame apart the % barely moves and the rate would be noisy)
+    const TimedSnap* o = nullptr;
+    for (int i = 1; i < g_ringCount; ++i) {
+        const TimedSnap& t = g_ring[(g_ringHead + 32 - 1 - i) % 32];
+        if (t.sendMs >= n.sendMs) break;                         // history from before a reload
+        o = &t;
+        if (n.sendMs - t.sendMs >= 150.0) break;
+    }
+    double now = Net::LocalClockMs() - Net::PeerClockOffsetMs() + aheadMs;   // in sender time
+    pct = o ? NetUtil::RacePctAt(o->s.racePct, o->sendMs, n.s.racePct, n.sendMs, now)
+            : NetUtil::RacePctAt(n.s.racePct, n.sendMs, n.s.racePct, n.sendMs, now);
+    return true;
+}
+
 const CarInfo* Net::PeerCar() { return g_havePeerCar ? &g_peerCar : nullptr; }
 
 const Net::Snapshot& Net::Latest() { return g_latest; }

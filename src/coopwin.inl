@@ -277,7 +277,54 @@ namespace {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Standings: the other player's place.
+//  GRaceStatus update 0x602C80 (racing only), once per sim step: for each racer slot (array at
+//  GRaceStatus+0x18, 0x194 bytes each) it calls GRacerInfo update 0x5E92E0 (call at 0x602D67), which
+//  recomputes race % (+0x18) and lap % (+0x24) from laps (+0x28), checkpoints this lap (+0x2C) and the
+//  car's remaining distance to the next checkpoint (IVehicleAI 0x403700, vtable +0x60); then it sorts
+//  (SortRacers 0x5FDE80; compare 0x5E31D0: finished first, then more laps, then higher race %) and
+//  hands out ranks (+0x10). All verified in the exe.
+//  The other player's racer has its racing AI switched off (we drive it), so that AI distance is not
+//  kept up and their % was mostly worked out from the checkpoints they had passed: they only moved up
+//  when they reached the next checkpoint (seen: ~100 m ahead before the order changed). Our own write
+//  of their % came after the sort (at Present), so it never decided the order.
+//  Now, right after the game updates their slot and before the sort, we put in the % their own game
+//  computed (the same formula on the same route, so both PCs use one scale), moved on to this moment
+//  by their recent rate (NetUtil::RacePctAt), plus their laps and checkpoints.
+// ---------------------------------------------------------------------------
+namespace {
+    // the other player's progress into their racer slot; false when it isn't theirs to write
+    bool WritePeerProgress(void* ri, float* usedPct = nullptr) {
+        const Net::Snapshot& p = Net::Latest();
+        if (!ri || !Net::Stats().connected || !g_coopLinked || !p.valid || !p.s.inRace || !p.s.eventHash ||
+            p.s.eventHash != Game::CurrentEventHash()) return false;
+        uint8_t fin = 0;
+        if (!Mem::Read((uintptr_t)ri + 0x21, fin) || fin) return false;   // finished: CoopWinTick owns the slot
+        float pct = p.s.racePct;
+        int ping = Net::Stats().pingMs;
+        Net::RemoteRacePctNow(ping > 0 && ping < 1000 ? ping * 0.5 : 0.0, pct);   // to now: + their one-way delay
+        int laps = p.s.laps, cps = p.s.checkpoints;
+        float lapPct = p.s.lapPct;
+        Mem::Write((uintptr_t)ri + 0x18, pct);
+        Mem::Write((uintptr_t)ri + 0x24, lapPct);
+        Mem::Write((uintptr_t)ri + 0x28, laps);
+        Mem::Write((uintptr_t)ri + 0x2C, cps);
+        if (usedPct) *usedPct = pct;
+        return true;
+    }
+    using RacerUpdateFn = void(__thiscall*)(void*, float);
+    void __fastcall hk_RacerUpdate(void* ri, void*, float dt) {
+        ((RacerUpdateFn)0x5E92E0)(ri, dt);
+        __try {
+            if (ri && g_ghost && g_ghostKind == GK_RACER && ri == GhostRacerInfo()) WritePeerProgress(ri);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    }
+}
+
 bool Game::InstallCatchUp() {
+    bool st = PatchCallChecked(0x602D67, 0x5E92E0, (void*)&hk_RacerUpdate);
+    LOG("Race: standings use the other player's own progress %s", st ? "hooked" : "NOT hooked (call site differs)");
     bool ok = PatchCallChecked(0x42956F, 0x4255A0, (void*)&hk_PlayersPct);
     LOG("Race: catch-up follows the leading player %s", ok ? "hooked" : "NOT hooked (call site differs)");
     return ok;

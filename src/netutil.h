@@ -136,6 +136,44 @@ namespace NetUtil {
         return h00 * p0 + h10 * dt * v0 + h01 * p1 + h11 * dt * v1;
     }
 
+    // ---- race standings ------------------------------------------------------------------------
+    // The other player's race % (GRacerInfo +0x18, 0..100 over the whole race) as it is at sender time
+    // `now`, from two of their samples (pctOld at tOld, pctNew at tNew, ms in their clock). The newest
+    // value is moved on at the rate between the two samples, for at most `maxAheadMs` (late packets),
+    // never backwards (a restart drops the % to 0: no negative rate) and never past 100.
+    inline float RacePctAt(float pctOld, double tOld, float pctNew, double tNew, double now, double maxAheadMs = 250.0) {
+        if (!(pctNew == pctNew)) return 0.f;
+        float out = pctNew;
+        double span = tNew - tOld, ahead = now - tNew;
+        if (span >= 20.0 && ahead > 0.0 && pctOld == pctOld) {
+            double rate = (pctNew - pctOld) / span;              // % per ms
+            if (rate > 0.0 && rate < 0.05) {                     // 0.05 %/ms = a whole race in 2 s: anything faster is a jump
+                if (ahead > maxAheadMs) ahead = maxAheadMs;
+                out = (float)(pctNew + rate * ahead);
+            }
+        }
+        if (out > 100.f) out = 100.f;
+        if (out < 0.f) out = 0.f;
+        return out;
+    }
+
+    // Grid slot sharing at a race start. Both games put their own player on the player's grid slot,
+    // so the two players stand on the same spot; the client moves its car to the slot its game built
+    // the host's racer on (where the host's game has the client's racer), so the two cars are apart
+    // on both screens from the first frame. True when that move is due: both cars stand still on the
+    // same spot (< 3 m) and the other player's slot is a nearby, different one (2..40 m away).
+    inline bool ShouldTakePeerSlot(const float* myPos, float mySpeed, const float* peerPos, float peerSpeed, const float* slotPos) {
+        auto d = [](const float* a, const float* b) {
+            float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+            return sqrtf(dx * dx + dy * dy + dz * dz);
+        };
+        auto ok = [](const float* v) { for (int i = 0; i < 3; ++i) if (!(fabsf(v[i]) <= 1.0e6f)) return false; return true; };
+        if (!ok(myPos) || !ok(peerPos) || !ok(slotPos)) return false;
+        if (!(mySpeed < 1.f) || !(peerSpeed < 1.f)) return false;      // the countdown: nobody is moving yet
+        float slot = d(myPos, slotPos);
+        return d(myPos, peerPos) < 3.f && slot > 2.f && slot < 40.f;
+    }
+
     // ---- validation of what the network hands us ----------------------------------------------
     // These floats go straight into the game's rigid bodies: a NaN / infinity / absurd value from a
     // broken or hostile peer must never get that far.

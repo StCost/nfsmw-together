@@ -293,3 +293,61 @@ TEST(util_validation_rejects_bad_floats) {
     v[0] = -MAX_POS * 1.01f;
     CHECK(!FiniteWithin(v, 3, MAX_POS));
 }
+
+// ---- race standings: the other player's % moved on to "now" ----
+TEST(util_race_pct_extrapolates_at_recent_rate) {
+    // 10 % -> 11 % in 200 ms = 0.005 %/ms; 40 ms past the newest sample: + 0.2 %
+    CHECK_NEAR(RacePctAt(10.f, 1000.0, 11.f, 1200.0, 1240.0), 11.2, 1e-4);
+    // not past the newest sample (or exactly on it): the newest value as it is
+    CHECK_NEAR(RacePctAt(10.f, 1000.0, 11.f, 1200.0, 1200.0), 11.0, 1e-5);
+    CHECK_NEAR(RacePctAt(10.f, 1000.0, 11.f, 1200.0, 1100.0), 11.0, 1e-5);
+    // late packets: at most 250 ms ahead (or what the caller allows)
+    CHECK_NEAR(RacePctAt(10.f, 1000.0, 11.f, 1200.0, 5000.0), 11.0 + 0.005 * 250, 1e-4);
+    CHECK_NEAR(RacePctAt(10.f, 1000.0, 11.f, 1200.0, 1400.0, 100.0), 11.5, 1e-4);
+}
+
+TEST(util_race_pct_never_backwards_or_past_100) {
+    CHECK_NEAR(RacePctAt(50.f, 1000.0, 0.f, 1100.0, 1150.0), 0.0, 1e-6);       // restart: % dropped, no negative rate
+    CHECK_NEAR(RacePctAt(5.f, 1000.0, 5.f, 1100.0, 1150.0), 5.0, 1e-6);        // standing still
+    CHECK_NEAR(RacePctAt(99.9f, 1000.0, 99.99f, 1020.0, 1200.0), 100.0, 1e-6); // capped at the finish
+    CHECK_NEAR(RacePctAt(1.f, 1000.0, 90.f, 1100.0, 1150.0), 90.0, 1e-6);      // a jump, not a speed: not extrapolated
+    CHECK_NEAR(RacePctAt(1.f, 1000.0, 2.f, 1010.0, 1100.0), 2.0, 1e-6);        // samples too close together
+    CHECK_NEAR(RacePctAt(3.f, 1000.0, 3.f, 1000.0, 1100.0), 3.0, 1e-6);        // a single sample
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    CHECK_NEAR(RacePctAt(nan, 1000.0, 4.f, 1100.0, 1150.0), 4.0, 1e-6);
+    CHECK_NEAR(RacePctAt(1.f, 1000.0, nan, 1100.0, 1150.0), 0.0, 1e-6);
+    CHECK_NEAR(RacePctAt(-5.f, 1000.0, -1.f, 1100.0, 1100.0), 0.0, 1e-6);
+}
+
+TEST(util_race_order_switches_within_metres) {
+    // A 6 km race: 1 m = 1/60 %. Both drive 50 m/s; the other player is 2 m ahead of us right now, but
+    // their newest sample is 80 ms old (half the ping + time since it was sent). Moved on to now, their
+    // % is ahead of ours, as it should be.
+    const double perM = 100.0 / 6000.0;
+    double ourM = 3000.0, theirNowM = 3002.0;
+    double theirAtNewest = theirNowM - 50.0 * 0.080, theirAtOlder = theirAtNewest - 50.0 * 0.150;
+    float est = RacePctAt((float)(theirAtOlder * perM), 1000.0, (float)(theirAtNewest * perM), 1150.0, 1230.0);
+    CHECK(est > (float)(ourM * perM));
+    CHECK_NEAR(est / perM, theirNowM, 0.5);
+    // without moving it on they would still count 2 m behind us
+    CHECK((float)(theirAtNewest * perM) < (float)(ourM * perM));
+}
+
+// ---- race start: the client leaves the grid slot both games give their own player ----
+TEST(util_take_peer_slot_only_when_sharing_a_slot) {
+    float me[3] = { 100, 5, 200 }, peerSame[3] = { 100.5f, 5, 200.4f }, slot[3] = { 104, 5, 196 };
+    CHECK(ShouldTakePeerSlot(me, 0.f, peerSame, 0.f, slot));
+    CHECK(ShouldTakePeerSlot(me, 0.5f, peerSame, 0.9f, slot));                 // settling on the suspension
+    float peerApart[3] = { 110, 5, 200 };
+    CHECK(!ShouldTakePeerSlot(me, 0.f, peerApart, 0.f, slot));                 // already on different spots
+    CHECK(!ShouldTakePeerSlot(me, 12.f, peerSame, 0.f, slot));                 // racing: never move a driving car
+    CHECK(!ShouldTakePeerSlot(me, 0.f, peerSame, 12.f, slot));
+    float slotHere[3] = { 100.5f, 5, 200 }, slotFar[3] = { 400, 5, 200 };
+    CHECK(!ShouldTakePeerSlot(me, 0.f, peerSame, 0.f, slotHere));              // that slot is ours
+    CHECK(!ShouldTakePeerSlot(me, 0.f, peerSame, 0.f, slotFar));               // not a grid slot next to us
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    float bad[3] = { nan, 5, 200 };
+    CHECK(!ShouldTakePeerSlot(me, 0.f, bad, 0.f, slot));
+    CHECK(!ShouldTakePeerSlot(me, nan, peerSame, 0.f, slot));
+    CHECK(!ShouldTakePeerSlot(me, 0.f, peerSame, 0.f, bad));
+}
