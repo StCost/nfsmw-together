@@ -13,6 +13,30 @@
 //  The other player's racer never "finishes" in our game by itself: when they report finishing, we
 //  mark it finished (0x5E97B0, thiscall GRacerInfo), set 100 %, and re-sort (SortRacers 0x5FDE80).
 //  The sender's CarState::finished carries its own rank at the finish (0 = still racing).
+//
+// Finishing as the winner when the other player won (verified in the exe and in the race script).
+//  The race flow is a Lua 5.0 state graph ("basicrace") in GLOBAL\gameplay.bin: each handler is a
+//  HUFF-packed chunk (unpacked with the exe's own decoder 0x64DCA0). At the finish line,
+//  stategraph_basicrace_racing_handler_triggerenter does, for any racer on its last lap:
+//      NumberFinished += 1
+//      placing = Game.CalculateRanking(Element, NumberFinished)     -- native 0x6058B0
+//      Game.NotifyRaceFinished(Element)                              -- native 0x6119F0 (cdecl ISimable*)
+//      Game.NotifyRacePlacement(activity, Element, placing)          -- native 0x60AA00
+//  NotifyRacePlacement posts MNotifyRacePlacement (kind 0x604440, ctor 0x6044C0(activity key, ISimable*,
+//  placing), 0x1C bytes) on channel 0x20D60DBF (Message::Post 0x654AF0 copies it). Its handlers:
+//    racing_handler_notifyraceplacement_3: a human racer, all humans done -> Placing == 1 ?
+//        ChangeState("postrace") (EnterPostRaceFlow 0x611F20 -> ShowPostRace(true) / the rival flow)
+//      : ChangeState("raceover") (the losing screen, whose Continue the script then waits for)
+//    race_bin_rival_unlocked_handler_notifyraceplacement: Placing <= 1 and Activity is one of the
+//        rival's BossRaces -> NumRivalRacesWon += 1; all won -> "done" (rival beaten).
+//  So the winner's screen, the rival progress and the payout (in NotifyRaceFinished) all follow the
+//  placing the script gets. We (1) answer CalculateRanking with 1 for our racer once the other player
+//  has won (a racer of theirs that crossed our line first must not make us 2nd), and (2) when their
+//  win arrives while we still drive, do the script's two calls ourselves for our racer with placing 1:
+//  the state graph moves on exactly as if we had crossed the line first, nothing is left waiting.
+//  Activity key of the race: what GRaceStatus::SetRaceActivity (0x6031F0) hands GRaceDatabase 0x600A20,
+//  which finds the race parameters by it: parms+4 ? *(parms+4) : *(*(*(parms+8)+4)+0x20). We check that
+//  0x600A20 gives our parameters back before posting.
 // ---------------------------------------------------------------------------
 namespace {
     bool g_coopWinLogged = false;
@@ -116,6 +140,95 @@ static void CoopWinLatchTick(bool connected, const Net::Snapshot& peer) {
     if (ev && connected && sameEvent && peer.s.inRace && peer.s.finished == 1 && g_peerRacedHere) g_peerWonEvent = ev;   // also without a ghost racer (rival races)
 }
 
+// ---- finish our racer as the winner (see the top of this file) ----
+namespace {
+    bool     g_forcedFinishTried = false;
+    uint32_t g_forcedFinishEvent = 0;
+
+    bool PeerWonThisEvent() {
+        return g_cfg.sharedWins && g_coopLinked && g_peerWonEvent && g_peerWonEvent == Game::CurrentEventHash();
+    }
+    void* LocalSimable() {
+        void* iv = LocalVehicle();
+        return IsVehicle(iv) ? VCall<void* (__thiscall*)(void*)>(iv, IV_GetSimable)(iv) : nullptr;
+    }
+    // the key the race script's activity is known by (see the top of this file); 0 if unknown
+    uint32_t ActivityKeyOf(void* parms) {
+        void* idx = nullptr; void* a = nullptr; void* b = nullptr; uint32_t key = 0;
+        if (!parms || !Mem::Read((uintptr_t)parms + 4, idx)) return 0;
+        if (idx) return Mem::Read((uintptr_t)idx, key) ? key : 0;
+        if (!Mem::Read((uintptr_t)parms + 8, a) || !a || !Mem::Read((uintptr_t)a + 4, b) || !b) return 0;
+        return Mem::Read((uintptr_t)b + 0x20, key) ? key : 0;
+    }
+    // MNotifyRacePlacement(activity, racer, placing) posted like the native NotifyRacePlacement does
+    bool PostRacePlacement(void* parms, void* sim, int placing) {
+        void* db = nullptr;
+        uint32_t key = ActivityKeyOf(parms);
+        if (!key || !Mem::Read(0x91E004, db) || !db) return false;
+        void* back = ((void*(__thiscall*)(void*, uint32_t))0x600A20)(db, key);
+        if (back != parms) { LOG("Race: activity key %08X does not lead back to this race (%p, not %p) - not posting the placement", key, back, parms); return false; }
+        alignas(4) uint8_t msg[0x20] = {};
+        ((void*(__thiscall*)(void*, uint32_t, void*, int))0x6044C0)(msg, key, sim, placing);
+        ((void(__thiscall*)(void*, uint32_t))0x654AF0)(msg, 0x20D60DBF);
+        return true;
+    }
+    bool IsLocalRacerSim(void* sim) {
+        void* rs = nullptr;
+        if (!sim || !Mem::Read(0x91E000, rs) || !rs) return false;
+        void* ri = ((void*(__thiscall*)(void*, void*))0x5E8B20)(rs, sim);
+        return ri && ri == RacerInfoOfLocal();
+    }
+
+    // Lua native CalculateRanking (0x6058B0, cdecl (ISimable*, int numberFinished) -> placing). Its first
+    // instruction is `call 0x6E8DF0` (5 bytes, replaced by our jmp): the trampoline makes that call and
+    // goes on at 0x6058B5 with the caller's stack untouched.
+    __declspec(naked) int __cdecl CalcRankingOrig(void*, int) {
+        __asm {
+            mov eax, 0x6E8DF0
+            call eax
+            push 0x6058B5
+            ret
+        }
+    }
+    int __cdecl hk_CalcRanking(void* element, int numberFinished) {
+        int r = CalcRankingOrig(element, numberFinished);
+        __try {
+            bool local = IsLocalRacerSim(element);
+            int placing = CoopRace::PlacingForScript(local, local && PeerWonThisEvent(), r);
+            if (placing != r) { LOG("Race: we crossed the line %d. - the other player won, so the race script gets place 1", r); r = placing; }
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+        return r;
+    }
+}
+
+static void CoopFinishTickImpl() {
+    uint32_t ev = Game::CurrentEventHash();
+    if (ev != g_forcedFinishEvent || !PeerWonThisEvent()) { g_forcedFinishEvent = ev; g_forcedFinishTried = false; }   // a new win (or restart) may finish us again
+    void* rs = nullptr; void* parms = nullptr; int mode = 0;
+    if (!Mem::Read(0x91E000, rs) || !rs || !Mem::Read((uintptr_t)rs + 0x1960, mode) || !Mem::Read((uintptr_t)rs + 0x1968, parms) || !parms) return;
+    void* ri = RacerInfoOfLocal();
+    uint8_t fin = 0, timer = 0, restart = 0;
+    if (ri) { Mem::Read((uintptr_t)ri + 0x21, fin); Mem::Read((uintptr_t)ri + 0x154, timer); }
+    Mem::Read(0x91CF28, restart);
+    CoopRace::FinishInputs in{};
+    in.sharedWins = g_cfg.sharedWins; in.peerWon = PeerWonThisEvent(); in.racing = mode == 1;
+    in.haveLocalRacer = ri != nullptr; in.localFinished = fin != 0; in.timerRunning = timer != 0;
+    in.restartPending = restart != 0; in.cutscene = NisActive(); in.alreadyTried = g_forcedFinishTried;
+    in.raceType = in.peerWon ? ((int(__thiscall*)(void*))0x5FAA20)(parms) : -1;
+    if (!CoopRace::ShouldFinishAsWinner(in)) return;
+    g_forcedFinishTried = true;
+    void* sim = LocalSimable();
+    if (!sim) return;
+    LOG("Race: the other player won while we still drive - finishing our racer as the winner (race type %d)", in.raceType);
+    ((void(__cdecl*)(void*))0x6119F0)(sim);                      // NotifyRaceFinished: finished, paid, car to the AI
+    int rank = 0; fin = 0;
+    Mem::Read((uintptr_t)ri + 0x21, fin); Mem::Read((uintptr_t)ri + 0x10, rank);
+    bool posted = PostRacePlacement(parms, sim, 1);              // the script's next step: place 1 -> winning flow
+    LOG("Race: our racer finished %d (rank %d here), placement 1 %s", (int)fin, rank,
+        posted ? "posted - the race script goes on to the winner's screen" : "NOT posted - the race ends when the game's AI drives our car over the line");
+    if (posted) g_coopWinNotice = true;
+}
+
 static void CoopWinTickImpl(bool connected, const Net::Snapshot& peer) {
     bool sameEvent = peer.valid && peer.s.eventHash && peer.s.eventHash == Game::CurrentEventHash();
     void* gri = (connected && sameEvent && peer.s.inRace) ? GhostRacerInfo() : nullptr;
@@ -135,6 +248,8 @@ void Game::CoopWinTick(bool connected, const Net::Snapshot& peer) {
     if (!g_ok) return;
     __try { CoopWinLatchTick(connected, peer); } __except (EXCEPTION_EXECUTE_HANDLER) {}
     if (GameFlowState() != 6) return;
+    // before their racer is marked finished here: our racer then sorts first (rank 1) as well
+    __try { if (connected) CoopFinishTickImpl(); } __except (EXCEPTION_EXECUTE_HANDLER) { LOG("Race: exception finishing our racer"); }
     __try { CoopWinTickImpl(connected, peer); } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -154,7 +269,11 @@ bool Game::InstallCoopWin() {
     // then waits for the losing screen's Continue and the player is stuck at the finish (seen on two PCs).
     // The win is still paid and recorded; the standings table shows who finished first.
     bool c = true; (void)&hk_ShowLosing;
-    LOG("Career: shared wins %s/%s/%s", a ? "ok" : "FAIL", b ? "ok" : "FAIL", c ? "ok" : "FAIL");
+    // Instead our racer gets place 1 from the race script's own CalculateRanking once the other player
+    // won, and is finished as the winner when their win arrives while we drive (CoopFinishTickImpl).
+    const uint8_t calc[5] = { 0xE8, 0x3B, 0x35, 0x0E, 0x00 };   // call 0x6E8DF0
+    bool d = PatchJmp(0x6058B0, calc, 5, (void*)&hk_CalcRanking);
+    LOG("Career: shared wins %s/%s/%s, winner's place for the race script %s", a ? "ok" : "FAIL", b ? "ok" : "FAIL", c ? "ok" : "FAIL", d ? "ok" : "FAIL (code differs)");
     return a && b && c;
 }
 
@@ -326,6 +445,13 @@ namespace {
 //  Now, right after the game updates their slot and before the sort, we put in the % their own game
 //  computed (the same formula on the same route, so both PCs use one scale), moved on to this moment
 //  by their recent rate (NetUtil::RacePctAt), plus their laps and checkpoints.
+//  Why their row takes an AI opponent's slot instead of being one extra row: the race script reads
+//  Game.GetNumRacers() once (basicrace initial state, right after InitRacers 0x61DBE0, whose count is
+//  1 - humans + GRaceParameters 0x5FACD0 and whose opponents come from 0x5FD2D0(i)) and sizes its
+//  per-racer tables (InRace, GoalList, NextGoal, LapsLeft) by it. Its checkpoint / finish handler looks
+//  every car that enters a trigger up with GetRacerIndex and indexes those tables: a racer slot added
+//  after that has no entries (a Lua error at their first checkpoint), and one more opponent before it
+//  needs an opponent record the event doesn't have (0x5FD2D0(N)) plus a grid slot. Not done.
 // ---------------------------------------------------------------------------
 namespace {
     // the other player's progress into their racer slot; false when it isn't theirs to write

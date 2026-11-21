@@ -2,6 +2,7 @@
 #include "netutil.h"
 #include "pursuitutil.h"
 #include "milestoneutil.h"
+#include "raceutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
@@ -262,15 +263,21 @@ namespace {
     // Switch off the racing AI of ONE car (the ones we drive from the network), leaving every other
     // racer alone: give that car's AI object a private copy of its vtable with the update slot
     // (0x892748 in the shared vtable) pointing to an empty function.
-    struct AIOverride { void* iv; uint32_t* field; uint32_t origVt; uint32_t copy[0x200]; };
+    struct AIOverride { void* iv; void* ai; uint32_t* field; uint32_t origVt; uint32_t copy[0x200]; };
     AIOverride g_aiOv[12];
 
     bool DisableAI(void* iv) {
         if (!IsVehicle(iv)) return false;
         for (auto& o : g_aiOv) if (o.iv && !ListContains(-1, o.iv)) o.iv = nullptr;   // cars that are gone
-        for (auto& o : g_aiOv) if (o.iv == iv) return true;
         void* ai = VCall<void* (__thiscall*)(void*)>(iv, 0xAC / 4)(iv);   // GetAIVehiclePtr
         if (!ai) return false;
+        for (auto& o : g_aiOv) {
+            if (o.iv != iv) continue;
+            if (o.ai == ai && *o.field == (uint32_t)&o.copy[1]) return true;
+            // the game built a new car at this address (next race without a world load): its AI is new
+            LOG("AI: %p is a new car with a new AI - switching that one off", iv);
+            o.iv = nullptr;
+        }
         // find the field holding the racer vtable (a pointer a little below the update slot)
         uint32_t* field = nullptr; uint32_t vt = 0;
         for (int off = -0x100; off <= 0x100; off += 4) {
@@ -285,7 +292,7 @@ namespace {
         if (!field) { LOG("AI: no racer vtable found on %p", iv); return false; }
         for (auto& o : g_aiOv) {
             if (o.iv) continue;
-            o.iv = iv; o.field = field; o.origVt = vt;
+            o.iv = iv; o.ai = ai; o.field = field; o.origVt = vt;
             Mem::SafeRead((void*)(vt - 4), o.copy, sizeof(o.copy));        // RTTI pointer + entries
             o.copy[1 + (Addr::RacerAIUpdateSlot - vt) / 4] = Addr::EmptyAIUpdate;
             *field = (uint32_t)&o.copy[1];
@@ -777,6 +784,10 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
     // the other AI racers: build the same opponents as the game that started the event
     bool fromRoster = false;
     uint32_t rKey = 0; void* rCustom = nullptr; void* rMatched = nullptr;
+    // (not in a rival race: the event itself names the rival's car, so both games build the same one; a
+    // roster could only swap it for another car and the client's rival would then match no host racer)
+    bool boss = vp && vp->carClass == DRV_RACER && BossRaceStarting();
+    if (boss && g_usePeerRoster) { g_usePeerRoster = false; LOG("Race: rival race - the event's own rival car, not the partner's roster"); }
     if (vp && vp->carClass == DRV_RACER && !replaced && g_coopLinked && g_usePeerRoster && g_peerRosterNext < g_peerRosterN) {
         RosterEntry& r = g_peerRoster[g_peerRosterNext++];
         rKey = vp->carType; rCustom = vp->customization; rMatched = vp->matched;
@@ -787,6 +798,7 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
     }
 
     void* simable = ((Fn)Addr::PVehicleConstruct)(p);
+    if (boss) LOG("Race: rival race - rival built as model %08X (%s)", vp->carType, simable ? "ok" : "FAILED");
     if (fromRoster) {
         if (simable) LOG("Race: opponent %d built as the peer's opponent (key %08X)", g_peerRosterNext, vp->carType);
         else {

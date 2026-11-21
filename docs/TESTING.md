@@ -77,7 +77,7 @@ tools\coop-test.ps1 -Scenario solo -Solo
 |---|---|
 | `smoke` | H+C `Connected to peer`, `Ghost acquired: spawned peer car`, a `joined` notice. No `CRASH`. |
 | `race` | H+C `standings use the other player's own progress hooked` at start-up. C `Event: using the peer's opponents`, `our racer ... follows the host's opponent`, `the other player's grid slot x y z`, then on the grid `Start: we stood on the host's grid slot - moved to the slot of the host's racer (N m)` (N = a few metres); from then on neither log shows `spawn protection` freezing the car and both cars drive away at the go. The other player's name is in the standings during the intro and countdown. While racing `Race: peer pct A (sent B) ...`: A is a little above B at speed, and the rank flips within a car length when one passes the other (drive side by side, then let the other pass). After the finish C `the other player finished (rank 1 there, 1 here)`, `the other player won - counted as our win too`; C's `cash` goes up; C returns to free roam and its save file is rewritten. |
-| `boss` | H `sent 1 opponent(s)`; C `opponent 1 built as the peer's opponent`, `Ghost acquired: spawned peer car` (the partner is not a racer here). Standings on each PC: that player + the rival. |
+| `boss` | H `sent 1 opponent(s)`; H and C `Race: rival race - rival built as model XXXXXXXX (ok)` with the same model, C `rival race - the event's own rival car, not the partner's roster`, `our racer ... now follows the host's opponent`, `Ghost acquired: spawned peer car` (the partner is not a racer here). Standings on each PC: that player + the rival. See Shared finish below for the end of the race. |
 | `restart` | H `restarted here - telling the peer`, C `peer restarted the race - restarting here too`; C is back on the grid with a new countdown, logs `Start: we stood on the host's grid slot ...` again and the two cars stand apart. |
 | `cutscene` | One vote: H `voted to skip ... waiting`, intro runs its full ~7.7 s on both. Both vote (`skipnis` on C too): `both voted - skipping`, intro ~3 s. |
 | `pursuit` | The PC that is NOT chased logs `Cops: showing the other player's police car` and `Pursuit: mine no ... theirs heat 1.x, 1 of their cops shown here`. A parked car is busted in ~30 s: with `SharedPursuits=1` (default) the other player is busted right after (see Shared pursuits below); with 0 that player lands in the garage and the other keeps playing. |
@@ -160,6 +160,42 @@ shows the rival number; `milestones` prints it). At start-up both logs show
 | In a race | C starts `event 15.1.1`, then H: `milestone` | C logs `the other player completed ...` at once and applies it only after the race, back in free roam |
 | Loading | quit to the menu and load the career again | `Milestones: the lists changed (career loaded?) ...` at most; no `we completed` lines for old progress |
 | Off | `SharedMilestones=0` on both | `Milestones: SharedMilestones=0 - each player keeps their own`; no `Milestones:` sharing lines |
+
+## Shared finish (`[Career] SharedWins`)
+
+Both PCs linked, `TestKeys=1`, the same career event. At start-up both logs show
+`Career: shared wins ok/ok/ok, winner's place for the race script ok`. Use `slowai` on both so the AI can't win.
+
+| Check | How | Pass |
+|---|---|---|
+| Partner wins, you still drive | normal race (`15.1.1`), H drives to the line, C stays far behind | H: normal winner's screen. C within a second of H's finish: `Race: the other player won while we still drive - finishing our racer as the winner (race type N)`, `Race: our racer finished 1 (rank 1 here), placement 1 posted - the race script goes on to the winner's screen`, then `the other player finished (rank 1 there, 2 here)`; the game takes C's car (AI drives it), C gets the same winner's screen as H (never "you finished 2nd" or the losing screen) and its Continue works; C's `cash` went up; both return to free roam. |
+| Swap roles | the same with C winning | the same lines on H |
+| Their car crossed your line first | H wins, C drives right behind H's car over the line before H's packet arrives (or set a long `InterpDelay` on C) | C either finishes as above, or crosses itself and logs `Race: we crossed the line 2. - the other player won, so the race script gets place 1`; winner's screen either way |
+| Rival race | `15.1.2` (rival race), then the second rival race from the "race the rival" screen | each race: the PC that did not cross the line logs the two `Race: ... finishing our racer as the winner` lines; both see the winner's screen; after the second race both get the normal rival flow (rival beaten, pink slip, markers) in their own career |
+| Nobody wins | let the AI win (no `slowai`) | no `finishing our racer` line; losing screens as in the plain game |
+| Off | `SharedWins=0` on both | no `finishing our racer` / `place 1` lines |
+
+If C logs `activity key ... does not lead back to this race - not posting the placement`, the game's AI drives C's car
+to the line and the race ends there (the winner's screen follows, only later): report that log.
+
+**Rival race opponents.** C logs `Race: rival race - rival built as model XXXXXXXX (ok)` (and, if a roster came,
+`the event's own rival car, not the partner's roster`), H the same model. Then C `our racer ... now follows the host's
+opponent (mirror id N)`; if the models still differ, after 1.5 s `... now follows the host's opponent N of model
+XXXXXXXX - no free racer of that model here`, and the rival drives exactly where H's rival drives. In the second rival
+race C logs `the racer that followed host opponent N is a new car now - binding again` (or a fresh `now follows`)
+and `AI: ... is a new car with a new AI` at most once; the rival never drives on its own AI next to H's rival.
+
+## Headlight flash (`[Coop] FlashLights`)
+
+Both PCs in free roam, linked, near each other, `NoSpeedbreaker=1`. At start-up both logs show
+`Lights: hold the speedbreaker bind to flash the headlights in co-op (render hooks installed)`.
+
+| Check | How | Pass |
+|---|---|---|
+| Flash | H: hold the speedbreaker key / pad button (or `flash`) | H `Lights: flashing our headlights (speedbreaker bind held, 1 so far)`; H's own headlight flares grow and brighten while held and go back when released. C: `Lights: the other player flashes their headlights (1 so far)`; H's car on C's screen flashes at the same moment. Nothing slows down (`Co-op: speedbreaker switched off` may show, as before). |
+| Keyboard and pad | try both binds, and a re-bound key from the game's controls menu | each flashes; releasing stops it within a frame |
+| Daylight | flash where the game shows no headlight glow | the flares appear while held |
+| Solo | not connected (or `FlashLights=0`) | the speedbreaker works as in the plain game, no `Lights:` flash lines |
 
 ## Story scenes (`SyncStoryScenes`)
 

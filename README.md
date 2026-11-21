@@ -49,7 +49,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - **Your own cars.** Each player drives their own car, with all its tuning and visuals, everywhere. Including damage and brake lights.
 - **Events together.** Start any career event and your partner is taken along. You get the same opponents,
   start at the same moment and see each other.
-- **Shared wins.** If either of you finishes first, it counts for both players.
+- **Shared wins.** If either of you finishes first, it counts for both players: the one still driving is finished as the winner on the spot and gets the same winner's screen.
 - **Police.** In free roam the cops are shared: you get the same heat, you lose them together and you get
   busted together. Your partner's cops show on your minimap and set off your radar detector.
 - **One world.** Shared traffic when you're near by, collisions between your cars, blips on the minimap and map.
@@ -127,6 +127,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Race intro cutscenes play normally for both
 - [x] A win by either player counts for both: cash, unlocks and career progress in each player's own career (`SharedWins`)
 - [x] The other player's finish is shown in your standings
+- [x] When one of you finishes first, the other is finished as the winner right away, even while still driving: 1st place, the winner's screen, the payout, and in rival races the rival's progress, each in their own career (`SharedWins`) (?)
+- [x] Blacklist rival races: the rival on the client follows the host's rival, also in the second race of the series and when the two games built different cars for it (?)
 - [x] Blacklist rival races: you both race the rival in the same event (your partner's car drives alongside, outside the standings), and each of you gets the normal rival flow after winning
 - [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose (?)
 - [x] Bounty counts for each player's own career (seen after an escape)

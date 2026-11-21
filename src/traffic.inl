@@ -123,6 +123,8 @@ namespace {
         double   lastSeen = 0; // local ms
         int      fails = 0;
         bool     racer = false; // a race opponent of the host: drives one of our own racers (no spawn)
+        uint32_t wid = 0;       // racer: world id of our racer it drives (a new race may build another car at that address)
+        double   unboundSince = 0;   // racer: local ms since it waits for one of our racers
         bool     bound = false; // in a race: iv is one of OUR OWN traffic cars following the host's car
                                 // (never killed, its AI is left alone: unbinding just lets it drive on)
         char     name[31] = {};  // its display name on the host (race opponents)
@@ -195,7 +197,7 @@ namespace {
     }
 
     void RemoveMirror(Mirror& m) {
-        if (m.racer) { if (m.iv) RestoreAI(m.iv); }          // our own racer: give it its AI back
+        if (m.racer) { if (m.iv && (!m.wid || WorldIdOf(m.iv) == m.wid)) RestoreAI(m.iv); }   // our own racer: give it its AI back
         else if (m.bound) {}                                  // our own traffic car: it just drives on
         else if (m.iv && ListContains(-1, m.iv)) KillVehicle(m.iv);   // (a car the game deleted was already dropped by g_onMirrorRemoved)
         m = Mirror{};
@@ -641,17 +643,33 @@ static int MaintainMirrors(double now) {
             continue;
         }
         if (m.racer) {
-            // bind to one of our own AI racers of the same model, switch its AI off and drive it
+            // the next race (a rival's second race: no world load) built a new racer at the same address
+            if (m.iv && m.wid && WorldIdOf(m.iv) != m.wid) {
+                LOG("Race: the racer that followed host opponent %u is a new car now - binding again", m.id);
+                m.iv = nullptr; m.wid = 0; m.fails = 0;
+            }
+            // bind to one of our own AI racers - the same model, else (after a moment) any free one -
+            // switch its AI off and drive it
             if (!m.iv && m.n) {
+                if (!m.unboundSince || m.unboundSince > now) m.unboundSince = now;
                 void** b = nullptr;
                 int cnt = ListSize(VL_AIRACERS, &b);
+                if (cnt > 16) cnt = 16;
+                CoopRace::RacerCand cand[16]; void* cars[16];
                 for (int i = 0; i < cnt; ++i) {
                     void* r = ListGet(VL_AIRACERS, i);
-                    if (!r || r == g_ghost || IsMirrorCar(r) || !RigidBodyOf(r) || ModelKeyOf(r) != m.model) continue;
-                    m.iv = r;
+                    cars[i] = r;
+                    cand[i].free = r && r != g_ghost && !IsMirrorCar(r) && RigidBodyOf(r);
+                    cand[i].model = cand[i].free ? ModelKeyOf(r) : 0;
+                }
+                int k = CoopRace::PickRacer(cand, cnt, m.model, now - m.unboundSince > CoopRace::ANY_MODEL_AFTER_MS);
+                if (k >= 0) {
+                    void* r = cars[k];
+                    m.iv = r; m.wid = WorldIdOf(r); m.unboundSince = 0;
                     DisableAI(r);
-                    LOG("Race: our racer %p (%s) now follows the host's opponent (mirror id %u)", r, VehName(r), m.id);
-                    break;
+                    if (cand[k].model == m.model) LOG("Race: our racer %p (%s) now follows the host's opponent (mirror id %u)", r, VehName(r), m.id);
+                    else LOG("Race: our racer %p (%s, model %08X) now follows the host's opponent %u of model %08X - no free racer of that model here",
+                             r, VehName(r), cand[k].model, m.id, m.model);
                 }
                 if (!m.iv && !m.fails) {   // log once why it found no partner
                     m.fails = 1;
