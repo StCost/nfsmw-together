@@ -122,7 +122,7 @@ namespace {
             WritePrivateProfileStringA("Debug", "Overlay", Overlay::IsVisible() ? "1" : "0", (std::string(g_dir) + "MWTogether.ini").c_str());
         }
         g_keyWasDown = down;
-        bool gdown = (fg && GetAsyncKeyState(VK_F9) & 0x8000) != 0;
+        bool gdown = (fg && g_cfg.testKeys && GetAsyncKeyState(VK_F9) & 0x8000) != 0;   // test key only: players hid each other by accident
         if (gdown && !g_ghostKeyWasDown) {
             g_ghostOn = !g_ghostOn;
             if (!g_ghostOn) Game::ReleaseGhost();

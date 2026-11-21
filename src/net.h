@@ -22,6 +22,7 @@ enum PacketType : uint16_t {
     PKT_FILEACK = 14,   // "I have the whole file with this hash"
     PKT_FILEREQ = 15,   // client -> host: "send me the save you keep for me"
     PKT_NOFILE  = 16,
+    PKT_CARPART = 19,   // PKT_CAR in 4 small pieces (some VPNs drop the 436-byte packet); older builds ignore it
     PKT_CARHIT  = 18,   // "my car hit YOUR traffic car / cop / racer <id> and lost this much velocity"
     PKT_HIT     = 17,   // "my car just lost this much velocity hitting yours" (momentum for the car that was hit)   // host -> client: "I keep no save for you"
 };
@@ -94,6 +95,13 @@ struct CarInfo {
     uint8_t  custom[CUSTOM_RECORD_SIZE];
 };
 
+struct CarPartPacket {
+    PacketHeader h;
+    uint32_t id;          // carKey ^ customHash of the whole CarInfo
+    uint8_t  index, count;
+    uint16_t len;
+    uint8_t  data[120];
+};
 struct CarPacket {
     PacketHeader h;
     CarInfo c;

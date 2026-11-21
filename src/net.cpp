@@ -57,6 +57,20 @@ namespace {
         FillHeader(p.h, PKT_CAR);
         p.c = g_localCar;
         SendRaw(&p, sizeof(p));
+        // the same in small pieces: they get through where a big datagram is dropped
+        const uint8_t* src = (const uint8_t*)&g_localCar;
+        const int total = (int)sizeof(CarInfo), chunk = (int)sizeof(((CarPartPacket*)0)->data);
+        const int n = (total + chunk - 1) / chunk;
+        for (int i = 0; i < n; ++i) {
+            CarPartPacket q{};
+            FillHeader(q.h, PKT_CARPART);
+            q.id = g_localCar.carKey ^ g_localCar.customHash;
+            q.index = (uint8_t)i; q.count = (uint8_t)n;
+            int len = total - i * chunk; if (len > chunk) len = chunk;
+            q.len = (uint16_t)len;
+            memcpy(q.data, src + i * chunk, len);
+            SendRaw(&q, sizeof(q));
+        }
         g_lastCarSend = Tick32();
     }
 
@@ -227,6 +241,22 @@ namespace {
             g_latest.seq = h->seq;
             g_latest.s = p->s;
             break;
+        }
+        case PKT_CARPART: {
+            if (len < (int)sizeof(CarPartPacket)) return;
+            const CarPartPacket* q = (const CarPartPacket*)buf;
+            static CarPacket asm_{}; static uint32_t asmId = 0, asmMask = 0;
+            const int total = (int)sizeof(CarInfo), chunk = (int)sizeof(q->data);
+            if (q->count == 0 || q->count > 8 || q->index >= q->count || q->len > chunk || q->index * chunk + q->len > total) return;
+            if (q->id != asmId) { asmId = q->id; asmMask = 0; }
+            memcpy((uint8_t*)&asm_.c + q->index * chunk, q->data, q->len);
+            asmMask |= 1u << q->index;
+            if (asmMask != (1u << q->count) - 1) return;
+            asmMask = 0;
+            asm_.h = q->h; asm_.h.type = PKT_CAR;
+            if (g_havePeerCar && asm_.c.carKey == g_peerCar.carKey && asm_.c.customHash == g_peerCar.customHash) return;   // nothing new
+            Handle((const char*)&asm_, (int)sizeof(asm_), from);                    // as if the whole packet came
+            return;
         }
         case PKT_CAR: {
             if (len < (int)sizeof(CarPacket)) return;
