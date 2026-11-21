@@ -1,6 +1,8 @@
 #include "game.h"
 #include "netutil.h"
 #include "pursuitutil.h"
+#include "milestoneutil.h"
+#include "lightsutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
@@ -466,6 +468,8 @@ std::string Game::ToggleAutopilot() {
 // Visual state of a car: its IInput controls (handle 0x403F90; controls block at IInput+8: steering
 // +0x0C, gas +0x1C, brake +0x20, handbrake +0x24, NOS byte +0x29 - relative to the IInput pointer;
 // setters slot 5 steering, 6 gas, 7 brake, 8 NOS(bool), 9 handbrake) and its light bits (IVehicle+0x9C).
+static void FlashLightsTick(void* iv);       // lights.inl: [Coop] FlashLights on our car
+static void FlashSeenOnGhost(uint32_t glare);
 static uint8_t Unit8(float v) { return (uint8_t)(v <= 0.f ? 0 : v >= 1.f ? 255 : (int)(v * 255.f + 0.5f)); }
 static void ReadCarControls(void* iv, CarState& out) {
     const uint8_t* in = (const uint8_t*)Find(iv, 0x403F90 /*IInput*/);
@@ -511,7 +515,8 @@ static void ApplyCarControls(void* iv, const CarState& s) {
         VCall<void(__thiscall*)(void*, float)>(in, 5)(in, steer);
         VCall<void(__thiscall*)(void*, bool)>(in, 8)(in, s.nos != 0);
     }
-    *(uint32_t*)((uint8_t*)iv + 0x9C) = s.glare;
+    *(uint32_t*)((uint8_t*)iv + 0x9C) = s.glare;          // with the headlight flash bit (lights.inl)
+    FlashSeenOnGhost(s.glare);
 }
 // While the remote car is held (cutscene, spawn protection) it must not keep the last steering / NOS.
 static void ClearCarControls(void* iv) {
@@ -539,6 +544,7 @@ bool Game::ReadLocalCar(CarState& out) {
         Mem::Read(0x9885D8, out.simTime);                 // when (in simulation time) this state is from
         // race progress of my racer (GRacerInfo: +0x18 pct race, +0x21 finished, +0x24 pct lap,
         // +0x28 laps, +0x2C checkpoints this lap), looked up with GRaceStatus::GetRacerInfo(ISimable*)
+        FlashLightsTick(iv);                               // [Coop] FlashLights: before the light bits are read
         ReadCarControls(iv, out);
         out.inRace = 0;
         void* rs = nullptr;
@@ -827,6 +833,8 @@ bool Game::InstallVehicleFactoryHook() {
         } __except (EXCEPTION_EXECUTE_HANDLER) {}
     };
     InstallCoopWin();
+    InstallSharedMilestones();
+    InstallFlashLights();
     InstallCatchUp();
     InstallNoSlowMotion();
     InstallWeatherSync();
@@ -899,6 +907,8 @@ void Game::SetDataDir(const char* dir) { strncpy_s(g_dataDir, dir, _TRUNCATE); }
 #include "save.inl"
 #include "coopwin.inl"
 #include "weather.inl"
+#include "milestone.inl"
+#include "lights.inl"
 
 void Game::ReleaseGhost() {
     g_streamPeer = false;

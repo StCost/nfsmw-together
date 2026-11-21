@@ -49,6 +49,8 @@ void Config::Load(const char* ini) {
     bootTrace = ReadInt(ini, "Debug", "BootTrace", 0) != 0;
     saveSync = ReadInt(ini, "Career", "SaveSync", 1) != 0;
     sharedWins = ReadInt(ini, "Career", "SharedWins", 1) != 0;
+    sharedMilestones = ReadInt(ini, "Career", "SharedMilestones", 1) != 0;
+    flashLights = ReadInt(ini, "Coop", "FlashLights", 1) != 0;
     startTogether = ReadInt(ini, "Coop", "StartTogether", 1) != 0;
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;
     noSlowMotion = ReadInt(ini, "Coop", "NoSlowMotion", 1) != 0;

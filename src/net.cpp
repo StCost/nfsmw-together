@@ -31,6 +31,7 @@ namespace {
     char        g_peerCarFile[MAX_PATH] = "";
     bool        g_haveLocalCar = false, g_havePeerCar = false;
     float       g_peerRain = 0, g_peerCloud = 0; uint32_t g_peerWeatherTick = 0;
+    uint32_t    g_lastMilestoneId = 0;        // PKT_MILESTONE copies share an id
     uint32_t    g_lastCarSend = 0;
 
 #ifdef MWT_TESTS
@@ -328,6 +329,15 @@ namespace {
             if (p->hitSeq == lastHit) return;                    // a copy of one we already applied
             lastHit = p->hitSeq;
             if (std::isfinite(p->dv[0]) && std::isfinite(p->dv[1]) && std::isfinite(p->dv[2]) && Net::OnHit) Net::OnHit(p->dv);
+            break;
+        }
+        case PKT_MILESTONE: {
+            if (len < (int)sizeof(MilestonePacket)) return;
+            const MilestonePacket* p = (const MilestonePacket*)buf;
+            if (p->msgId == g_lastMilestoneId) return;            // a copy of the one we just had
+            if (p->kind > 1 || p->key == 0 || p->bin > 64 || !std::isfinite(p->value) || std::fabs(p->value) > 1e7f) return;
+            g_lastMilestoneId = p->msgId;
+            if (Net::OnMilestone) Net::OnMilestone(p->msgId, p->kind, p->key, p->bin, p->value);
             break;
         }
         case PKT_NISSKIP: {
@@ -747,6 +757,7 @@ void Net::Test_Reset() {
     Net::OnTraffic = nullptr; Net::OnEvent = nullptr; Net::OnRoster = nullptr;
     Net::OnRacerName = nullptr; Net::OnRestart = nullptr; Net::OnNisSkip = nullptr;
     Net::OnFile = nullptr; Net::OnFileRequest = nullptr; Net::OnNoFile = nullptr;
+    Net::OnMilestone = nullptr; g_lastMilestoneId = 0;
     FileReset();
     Net::LocalClockMs = &Net::NowMs;
 }
@@ -906,5 +917,14 @@ void Net::SendCarHit(uint16_t id, const float* dv) {
     CarHitPacket p{};
     FillHeader(p.h, PKT_CARHIT);
     p.hitSeq = ++seq; p.id = id; memcpy(p.dv, dv, sizeof(p.dv));
+    for (int i = 0; i < 2; ++i) SendRaw(&p, sizeof(p));
+}
+
+void (*Net::OnMilestone)(uint32_t, uint8_t, uint32_t, uint16_t, float) = nullptr;
+void Net::SendMilestone(uint32_t msgId, uint8_t kind, uint32_t key, uint16_t bin, float value) {
+    if (!g_stats.connected) return;
+    MilestonePacket p{};
+    FillHeader(p.h, PKT_MILESTONE);
+    p.msgId = msgId; p.kind = kind; p.key = key; p.bin = bin; p.value = value;
     for (int i = 0; i < 2; ++i) SendRaw(&p, sizeof(p));
 }
