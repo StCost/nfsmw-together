@@ -72,8 +72,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Status overlay on F8, and it remembers whether you hid it
 - [x] Launcher (`MWTogetherLauncher.exe` next to `speed.exe`) in the game's style: name, host or join, the host's IP, start options under Settings, then Play
 - [x] A short notice in the corner when the other player joins or leaves, even with the overlay hidden.
-- [x] Notifications use game's own UI: the EA Trax banner (where songs are announced) shows "<name> joined / left";
-- [x] Notices stay on screen for 10 seconds, the game's banner included, without sliding in again (`[UI] NoticeSeconds`)
+- [x] Notifications use game's own UI: the message line in the centre of the screen (where races show hints and split times) shows "<name> joined / left" in green, problems (lost connection, firewall, prologue) in orange; a long notice is shown in parts. In cutscenes and menus, where there is no HUD, the EA Trax song banner shows it instead (?)
+- [x] Notices stay on screen for 10 seconds (a notice in parts shares them, at least 3 s a part), the game's banner included, without sliding in again (`[UI] NoticeSeconds`)
 - [x] Joining while the other player is in a race: you roam freely, get a notice, and go together into the next event (?)
 - [x] Strangers can't interfere: each game ignores network packets from anyone except the player it connected to
 - [x] Event starts and restarts are repeated for a few seconds, so a lost packet can't leave you in different races

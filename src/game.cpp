@@ -5,6 +5,7 @@
 #include "raceutil.h"
 #include "profileutil.h"
 #include "groundutil.h"
+#include "noticeutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
@@ -15,6 +16,7 @@
 #include <initializer_list>
 #include <shlobj.h>
 #include <vector>
+#include <deque>
 #include <string>
 #include <share.h>
 
