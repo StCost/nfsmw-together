@@ -62,7 +62,9 @@ namespace {
         int mode = 0;
         void* cur = CurrentParms(&mode);
         const char* resultsScreen = FEScreens::IsPushed("PostRace_Results.fng") ? "PostRace_Results.fng"
-                                  : FEScreens::IsPushed("InGamePhotoMaster.fng") ? "InGamePhotoMaster.fng" : nullptr;   // winner's photo
+                                  : FEScreens::IsPushed("InGamePhotoMaster.fng") ? "InGamePhotoMaster.fng"   // winner's photo
+                                  : FEScreens::IsPushed("InGameRivalChallenge.fng") ? "InGameRivalChallenge.fng"   // "race the rival" between rival races: continue like they did
+                                  : nullptr;
         if (cur && mode == 1 && fromPeer && EventHashOf(cur) != eventHash && resultsScreen) {
             void* db0 = nullptr; Mem::Read(0x91E004, db0);
             void* next = db0 ? ((void*(__thiscall*)(void*, uint32_t))0x5FB710)(db0, eventHash) : nullptr;

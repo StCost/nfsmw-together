@@ -1235,7 +1235,9 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         if (!g_protectHolding && Dist(lp, s.pos) > (float)g_cfg.safeDistance) {
             g_separated = true;
             LOG("Spawn protection off: players are %.0f m apart", Dist(lp, s.pos));
-        } else if (g_ghostKind != GK_RACER || Dist(lp, s.pos) < 4.f) {
+        } else if ((g_ghostKind != GK_RACER && !Game::CurrentEventHash()) || Dist(lp, s.pos) < 4.f) {
+            // (in any event - also a rival race, where their car isn't a racer - it drives from the first
+            // frame and is only held while it would stand inside ours)
             // In a race their car drives from the first frame (collisions stay off until the two are
             // apart): it is only held while it would stand inside ours.
             float zero[3] = { 0, 0, 0 };
