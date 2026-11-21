@@ -75,3 +75,16 @@ TEST(race_boss_helper_car_list) {
     CHECK(CoopRace::BossHelperCar(0) == nullptr);
     CHECK(CoopRace::BossHelperCar(16) == nullptr);
 }
+
+TEST(race_win_counts_only_when_raced_together) {
+    unsigned long since = 0;
+    CHECK(!CoopRace::RacedTogether(true, false, since, 1000));    // they race, we're still in the intro
+    CHECK_EQ(since, 0UL);
+    CHECK(!CoopRace::RacedTogether(true, true, since, 2000));     // together from now
+    CHECK(!CoopRace::RacedTogether(true, true, since, 4000));
+    CHECK(CoopRace::RacedTogether(true, true, since, 5001));      // 3 s together
+    unsigned long s2 = 0;
+    CHECK(!CoopRace::RacedTogether(true, true, s2, 100));
+    CHECK(!CoopRace::RacedTogether(false, true, s2, 1500));       // they finished: no overlap any more
+    CHECK_EQ(s2, 0UL);
+}

@@ -426,10 +426,11 @@ namespace {
     }
 }
 
-// the prologue: the hold has no 20 s limit while the other player is still on the way here by their chain
+// the prologue: the hold has no 20 s limit while the other player is still on the way here by their chain,
+// or already in this event but not on its grid yet (each prologue start runs a story movie of ~50 s first)
 static bool PrologueHoldOn(uint32_t hash, const Net::Snapshot& pr) {
     Game::PrologueState st = Game::PrologueNow();
-    return st.inPrologue && PeerPrologue().inPrologue && pr.s.eventHash != hash;
+    return st.inPrologue && PeerPrologue().inPrologue && (pr.s.eventHash != hash || pr.s.pad[0] < 2);
 }
 static void StartSyncTickImpl(bool connected) {
     DWORD now = GetTickCount();
@@ -461,7 +462,7 @@ static void StartSyncTickImpl(bool connected) {
         bool peerReady = pr.valid && pr.s.eventHash == hash && pr.s.pad[0] >= 2;
         if (connected && g_cfg.startTogether && peerComing && !peerReady && !g_holding) {
             int req = 0;
-            if (Mem::Read(0x91CAE4, req)) { ++req; Mem::Write(0x91CAE4, req); g_holding = true; g_holdSince = now; g_prologueHeld = prologueWait && pr.s.eventHash != hash; }
+            if (Mem::Read(0x91CAE4, req)) { ++req; Mem::Write(0x91CAE4, req); g_holding = true; g_holdSince = now; g_prologueHeld = PrologueHoldOn(hash, pr); }
             const std::string& pn = Net::Stats().peerName;
             sprintf_s(g_startStatus, prologueWait && pr.s.eventHash != hash ? "waiting for %s to catch up" : "waiting for %s to load...",
                       pn.empty() ? "the other player" : pn.c_str());

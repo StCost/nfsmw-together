@@ -14,6 +14,9 @@ TEST(prologue_encode_decode) {
     p = Decode(false, Encode(true, 2));                    // no state yet
     CHECK(!p.known); CHECK(!p.supported);
     CHECK_EQ(Decode(true, Encode(true, 999)).step, 255);
+    CHECK(Decode(true, Encode(false, 0, false)).noCareer);     // career not started yet
+    CHECK(!Decode(true, Encode(true, 2)).noCareer);
+    CHECK(!Decode(true, 0).noCareer);
 }
 
 TEST(prologue_allowed_here) {

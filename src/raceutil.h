@@ -59,4 +59,14 @@ namespace CoopRace {
         default: return nullptr;
         }
     }
+
+    // The other player's win counts for us only in a race we drove together: they were racing (not finished)
+    // while our own race was running (clock on, not finished) for RacedTogetherMs. `since` keeps the start
+    // of the current overlap (0 = none). True once it has lasted long enough.
+    constexpr unsigned long RacedTogetherMs = 3000;
+    inline bool RacedTogether(bool peerRacing, bool weRacing, unsigned long& since, unsigned long now) {
+        if (!peerRacing || !weRacing) { since = 0; return false; }
+        if (!since) { since = now ? now : 1; return false; }
+        return now - since >= RacedTogetherMs;
+    }
 }

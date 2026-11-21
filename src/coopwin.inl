@@ -142,7 +142,18 @@ static void CoopWinLatchTick(bool connected, const Net::Snapshot& peer) {
         g_coopWinLogged = false; g_peerWonEvent = 0; g_peerRacedHere = false;
     }
     lastEvent = ev; lastRestart = restart; lastPeerFin = pfin;
-    if (ev && connected && sameEvent && peer.s.inRace && !peer.s.finished) g_peerRacedHere = true;
+    // their win counts only for a race we drove together: they were racing while our race was running too,
+    // for a few seconds (not a run they finished while we were still in the intro / on the grid)
+    static DWORD togetherSince = 0; static uint32_t togetherEvent = 0;
+    if (ev != togetherEvent) { togetherEvent = ev; togetherSince = 0; }
+    bool weRace = false;
+    if (void* ri = ev ? RacerInfoOfLocal() : nullptr) {
+        uint8_t timer = 0, fin = 0;
+        Mem::Read((uintptr_t)ri + 0x154, timer); Mem::Read((uintptr_t)ri + 0x21, fin);
+        weRace = timer != 0 && !fin;
+    }
+    if (CoopRace::RacedTogether(ev && connected && sameEvent && peer.s.inRace && !peer.s.finished, weRace, togetherSince, GetTickCount()))
+        g_peerRacedHere = true;
     // (never in the prologue's Razor race 16.2.1: the story needs that loss - the car breaks down on both)
     if (ev && connected && sameEvent && peer.s.inRace && peer.s.finished == 1 && g_peerRacedHere && !ScriptedLossEvent()) g_peerWonEvent = ev;   // also without a ghost racer (rival races)
 }

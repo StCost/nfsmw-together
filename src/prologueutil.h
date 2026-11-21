@@ -9,19 +9,21 @@
 namespace Prologue {
     constexpr uint16_t Supported = 0x8000;   // the sender's build knows co-op in the prologue
     constexpr uint16_t InPrologue = 0x4000;  // the sender's career is in the prologue
+    constexpr uint16_t NoCareer = 0x2000;    // the sender's profile hasn't started its career yet
     constexpr uint16_t StepMask = 0x00FF;    // prologue events the sender has done
 
-    inline uint16_t Encode(bool inPrologue, int step) {
+    inline uint16_t Encode(bool inPrologue, int step, bool careerStarted = true) {
         if (step < 0) step = 0; if (step > 255) step = 255;
-        return (uint16_t)(Supported | (inPrologue ? InPrologue : 0) | step);
+        return (uint16_t)(Supported | (inPrologue ? InPrologue : 0) | (careerStarted ? 0 : NoCareer) | step);
     }
-    struct Peer { bool known; bool supported; bool inPrologue; int step; };
+    struct Peer { bool known; bool supported; bool inPrologue; int step; bool noCareer; };
     inline Peer Decode(bool valid, uint16_t pad2) {
         Peer p{};
         p.known = valid;
         p.supported = valid && (pad2 & Supported);
         p.inPrologue = p.supported && (pad2 & InPrologue);
         p.step = p.supported ? (pad2 & StepMask) : 0;
+        p.noCareer = p.supported && (pad2 & NoCareer);
         return p;
     }
     // CarState::pad[1] ("co-op allowed here"). In the prologue only towards a peer that knows prologue co-op
