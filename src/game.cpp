@@ -1200,6 +1200,56 @@ static bool UpdateGhostSafe(const Net::Snapshot& latest, const Net::Snapshot& pr
     }
 }
 
+// The other player's car sometimes shows a different 3D model after a while (seen: a traffic station
+// wagon) while the game still calls it "cobaltss". Check its render connection once a second:
+// FindCarRenderConn(worldId) 0x744D40, worldId = ISimable slot 28 (0x686AF0), conn+0x2C model type,
+// conn+0x28 state (2+ = drawn). A changed or missing model -> respawn it. If the model is unchanged, the
+// wrong car on screen is another vehicle on the same spot: log what is there.
+static int GhostRenderTypeSafe(void* iv) {
+    __try {
+        void* sim = VCall<void* (__thiscall*)(void*)>(iv, IV_GetSimable)(iv);
+        if (!sim) return -2;
+        uint32_t wid = VCall<uint32_t(__thiscall*)(void*)>(sim, 28)(sim);
+        char* conn = ((char*(__cdecl*)(uint32_t))0x744D40)(wid);
+        if (!conn) return -1;
+        if (*(int*)(conn + 0x28) < 2) return -3;                 // still loading
+        return *(int*)(conn + 0x2C);
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return -2; }
+}
+static void LogCarsOnGhostSafe() {
+    __try {
+        void* grb = RigidBodyOf(g_ghost);
+        if (!grb) return;
+        const float* gp = RB_GetVec(grb, RB_GetPosition);
+        void** b = nullptr;
+        int n = ListSize(-1, &b);
+        for (int i = 0; i < n; ++i) {
+            void* v = ListGet(-1, i);
+            if (!v || v == g_ghost || v == LocalVehicle()) continue;
+            void* rb = RigidBodyOf(v);
+            if (rb && Dist(RB_GetVec(rb, RB_GetPosition), gp) < 4.f)
+                LOG("Ghost: another car on the other player's spot: %s %p (mirror %d)", VehName(v), v, IsMirrorCar(v) ? 1 : 0);
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+static void GhostModelCheck() {
+    static void* checked = nullptr; static int firstType = -9; static DWORD since = 0, next = 0, nextNear = 0;
+    if (!g_ghost || g_ghostKind != GK_SPAWNED) { checked = nullptr; return; }
+    DWORD now = GetTickCount();
+    if (checked != g_ghost) { checked = g_ghost; firstType = -9; since = now; next = now + 1500; }
+    if (now >= nextNear) { nextNear = now + 5000; LogCarsOnGhostSafe(); }
+    if (now < next) return;
+    next = now + 1000;
+    int type = GhostRenderTypeSafe(g_ghost);
+    if (type == -3 || type == -2) return;
+    if (firstType == -9) { if (type >= 0) { firstType = type; LOG("Ghost: render model type %d", type); } return; }
+    if (type != firstType && now - since > 3000) {
+        LOG("Ghost: render model changed (%d -> %d) - respawning the other player's car", firstType, type);
+        Game::ReleaseGhost();
+        checked = nullptr;
+    }
+}
+
 std::string Game::UpdateGhost(const Net::Snapshot& latest, const Net::Snapshot& prev, bool enabled) {
     if (!g_ok) return "game not recognised";
     char buf[256] = "";
@@ -1209,6 +1259,7 @@ std::string Game::UpdateGhost(const Net::Snapshot& latest, const Net::Snapshot& 
         PatchRacerAI(false);
         return "error (see log)";
     }
+    GhostModelCheck();
     // Write the ghost line to the log every 2 s so tests don't depend on screenshots.
     static DWORD lastStats = 0;
     if (g_ghost && GetTickCount() - lastStats > 2000) {
