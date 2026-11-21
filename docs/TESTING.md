@@ -45,6 +45,9 @@ second, deletes it and logs `Command '<text>': <result>`. This works with the ga
 | `tp <x> <y> <z>` | move your car there (numbers as `pos` prints them). The first call loads the world at that spot; send the same `tp` again about 5 s later to move. Handy to reach a marker the autopilot won't drive to |
 | `clone` / `unclone` / `cop` | spawn/remove a copy of the other player's car, spawn a cop |
 | `notice <text>` | show a notice in the game's banner |
+| `milestones` | log our rival's open and done milestones / speed traps (key, rival, value) and print the counts |
+| `milestone` / `speedtrap` | complete the first open milestone / speed trap of our rival here, through the game's own award (bounty included), as if we had earned it. With co-op on it's then sent to the other player |
+| `flash` | flash our headlights for 5 s, as if the speedbreaker bind were held (co-op on only) |
 | `shot <file.bmp>` | save the next frame (without the overlay) |
 | `accept <Screen.fng>` | send "accept" to a menu screen |
 
@@ -138,6 +141,36 @@ One PC is enough. Keep the log open (`scripts\MWTogether.log`).
 | Restore defaults still works | Options > Controller > restore defaults | the bindings go back to the defaults, log `controller bindings set to the defaults ... (called from 0051D707)` |
 | Unknown reset | play normally (pause menu, options, reset car, restart a race) | if `Pad: blocked a reset of the controller bindings (called from ...)` shows up, note what you just did: that is a reset the game would have done and the mod stopped |
 | Switches off | `GamepadHotplug=0` | no `Pad: controller ...` lines, a pad plugged in later is ignored (the game's own behaviour) |
+
+## Shared milestones (`[Career] SharedMilestones`)
+
+Both PCs in free roam, linked, `TestKeys=1`, both careers at the **same** Blacklist rival (the overlay / `story`
+shows the rival number; `milestones` prints it). At start-up both logs show
+`Milestones: shared with the other player (same rival only)`.
+
+| Check | How | Pass |
+|---|---|---|
+| Lists readable | both: `milestones` | `Command 'milestones': rival N: milestones M (a open, b done), speed traps T (c open, d done)` with the same N on both, plus one `Milestones: milestone XXXXXXXX rival N open/done ...` line per entry of that rival |
+| Milestone shared | H: `milestone` | H `Command 'milestone': milestone K (rival N): applied, state now 4`, then `Milestones: we completed milestone K (rival N, ...) - telling the other player`; H's game shows the "milestone reached" popup. C: `Milestones: the other player completed milestone K`, then `Milestones: the other player's milestone K (rival N) completed here (state now 4)`; banner `<H> completed a milestone - it counts for you too`; C's bounty goes up by the milestone's reward; C's Blacklist / rap sheet shows K done. C sends nothing back. `milestones` on C: one more done. |
+| Speed trap shared | C: `speedtrap` | the same lines the other way round with `speed trap`; on H the trap is done in the Blacklist screen |
+| Real play | both: drive through one of the rival's speed traps (C only), or get a pursuit milestone (pursuit length, cost to state...) on H and escape | the same log lines as above within ~1 s of the game paying it on the PC that earned it (a pursuit milestone is paid when the pursuit ends, not when it's reached) |
+| Already done | repeat a check for an entry the other PC already has | `... - already done here (our rival N)`, no notice, no second bounty |
+| Different rivals | one career a rival further on | `... - not available here (another rival)` or `another rival here`; nothing changes on that PC |
+| In a race | C starts `event 15.1.1`, then H: `milestone` | C logs `the other player completed ...` at once and applies it only after the race, back in free roam |
+| Loading | quit to the menu and load the career again | `Milestones: the lists changed (career loaded?) ...` at most; no `we completed` lines for old progress |
+| Off | `SharedMilestones=0` on both | `Milestones: SharedMilestones=0 - each player keeps their own`; no `Milestones:` sharing lines |
+
+## Headlight flash (`[Coop] FlashLights`)
+
+Both PCs in free roam, linked, near each other, `NoSpeedbreaker=1`. At start-up both logs show
+`Lights: hold the speedbreaker bind to flash the headlights in co-op (render hooks installed)`.
+
+| Check | How | Pass |
+|---|---|---|
+| Flash | H: hold the speedbreaker key / pad button (or `flash`) | H `Lights: flashing our headlights (speedbreaker bind held, 1 so far)`; H's own headlight flares grow and brighten while held and go back when released. C: `Lights: the other player flashes their headlights (1 so far)`; H's car on C's screen flashes at the same moment. Nothing slows down (`Co-op: speedbreaker switched off` may show, as before). |
+| Keyboard and pad | try both binds, and a re-bound key from the game's controls menu | each flashes; releasing stops it within a frame |
+| Daylight | flash where the game shows no headlight glow | the flares appear while held |
+| Solo | not connected (or `FlashLights=0`) | the speedbreaker works as in the plain game, no `Lights:` flash lines |
 
 ## Story scenes (`SyncStoryScenes`)
 

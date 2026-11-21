@@ -42,6 +42,9 @@ struct Config {
                                          // (+ skip only when both voted), 2 also plays the same story movie there
     int         readyDelayMs = 0;        // [Debug] ReadyDelayMs - test: report "ready" this much later
     bool        sharedWins = true;       // [Career] SharedWins - a win by either player counts for both
+    bool        sharedMilestones = true; // [Career] SharedMilestones - a milestone / speed trap one player completes is
+                                         // completed for the other too (same rival, through the game's own award)
+    bool        flashLights = true;      // [Coop] FlashLights - hold the speedbreaker bind to flash your headlights
     bool        saveSync = true;         // [Career] SaveSync - the host keeps a copy of the client's save
     bool        bootTrace = false;       // [Debug] BootTrace - log memory-card / controller state changes while booting
     bool        perf = false;            // [Debug] Perf - log fps / frame times / mod cost every 5 s

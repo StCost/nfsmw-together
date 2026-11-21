@@ -107,6 +107,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Pause menu and world map don't pause the time while you're connected
 - [x] No speedbreaker in co-op (slow motion can't work for two people)
 - [x] Smooth traffic handover: when you drive away from the other player, their traffic cars around you don't vanish - they drive on as your own traffic. When you come back, your own cars stay until they're out of sight and the other player's cars only appear where you can't see them pop in (behind you or far away), or one of your nearby cars quietly takes their place (`[Traffic] SmoothHandover`, 0 = the old instant switch) (?)
+- [x] Flash your headlights: in co-op, holding the speedbreaker key or button flashes your headlights, and the other player sees it on your car (`[Coop] FlashLights`) (?)
 - [x] Shared traffic inside races: the host's traffic cars are shown by the client's own traffic cars, so race scripts keep every car they own. Cars are in the same places on both screens, but may be a different model when no matching one is free (`[Traffic] SharedInRaces`, 0 = each player keeps their own traffic in races)
 
 
@@ -130,6 +131,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose (?)
 - [x] Bounty counts for each player's own career (seen after an escape)
 - [x] Milestones in co-op (speed traps, pursuit length, cost to state, infractions and the rest): each player earns their own while playing together (?)
+- [x] Shared milestones: when one of you completes a milestone or a speed trap of your Blacklist rival, the other player gets it too, with its bounty, if their career is at the same rival (`[Career] SharedMilestones`) (?)
 - [x] Challenge Series events: when you both start from the main menu, both load the event with its preset car. A player who is roaming in career isn't pulled in (?)
 
 

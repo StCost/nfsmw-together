@@ -40,6 +40,9 @@ static_assert(offsetof(FileChunkPacket, fileHash) == 16 && offsetof(FileChunkPac
               offsetof(FileChunkPacket, total) == 34 && offsetof(FileChunkPacket, owner) == 36 &&
               offsetof(FileChunkPacket, profile) == 68 && offsetof(FileChunkPacket, data) == 100, "FileChunkPacket layout changed");
 static_assert(sizeof(((FileChunkPacket*)nullptr)->owner) == 32 && sizeof(((FileChunkPacket*)nullptr)->profile) == 32, "FileChunkPacket layout changed");
+static_assert(sizeof(MilestonePacket) == 32 && offsetof(MilestonePacket, msgId) == 16 && offsetof(MilestonePacket, key) == 20 &&
+              offsetof(MilestonePacket, value) == 24 && offsetof(MilestonePacket, bin) == 28 && offsetof(MilestonePacket, kind) == 30,
+              "MilestonePacket layout changed");
 static_assert(sizeof(FileAckPacket) == 20 && offsetof(FileAckPacket, fileHash) == 16, "FileAckPacket layout changed");
 static_assert(sizeof(FileReqPacket) == 48 && offsetof(FileReqPacket, owner) == 16, "FileReqPacket layout changed");
 static_assert(FILE_CHUNK == 1024 && FILE_MAX == 256 * 1024, "file transfer limits changed");
@@ -73,6 +76,7 @@ TEST(protocol_struct_sizes) {
     CHECK_EQ(sizeof(FileReqPacket), 48);
     CHECK_EQ(FILE_CHUNK, 1024);
     CHECK_EQ(FILE_MAX, 262144);
+    CHECK_EQ(sizeof(MilestonePacket), 32);
 }
 
 TEST(protocol_magic_and_version) {
@@ -89,6 +93,8 @@ TEST(protocol_packet_type_numbers) {
     CHECK_EQ(PKT_BYE, 5); CHECK_EQ(PKT_CAR, 6); CHECK_EQ(PKT_TRAFFIC, 7); CHECK_EQ(PKT_EVENT, 8);
     CHECK_EQ(PKT_ROSTER, 9); CHECK_EQ(PKT_RACERNAME, 10); CHECK_EQ(PKT_RESTART, 11); CHECK_EQ(PKT_NISSKIP, 12);
     CHECK_EQ(PKT_FILE, 13); CHECK_EQ(PKT_FILEACK, 14); CHECK_EQ(PKT_FILEREQ, 15); CHECK_EQ(PKT_NOFILE, 16);
+    CHECK_EQ(PKT_HIT, 17); CHECK_EQ(PKT_CARHIT, 18); CHECK_EQ(PKT_CARPART, 19); CHECK_EQ(PKT_WEATHER, 20);
+    CHECK_EQ(PKT_MILESTONE, 21);       // new in this build; older builds of the same version ignore it
 }
 
 TEST(protocol_header_is_filled_by_senders) {

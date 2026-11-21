@@ -26,6 +26,7 @@ enum PacketType : uint16_t {
     PKT_WEATHER = 20,   // host -> client: rain / cloud targets (older builds ignore it)   // PKT_CAR in 4 small pieces (some VPNs drop the 436-byte packet); older builds ignore it
     PKT_CARHIT  = 18,   // "my car hit YOUR traffic car / cop / racer <id> and lost this much velocity"
     PKT_HIT     = 17,   // "my car just lost this much velocity hitting yours" (momentum for the car that was hit)   // host -> client: "I keep no save for you"
+    PKT_MILESTONE = 21, // "I completed this milestone / speed trap" ([Career] SharedMilestones; older builds ignore it)
 };
 
 struct PacketHeader {
@@ -180,6 +181,15 @@ struct CarHitPacket {
     uint16_t pad;
     float    dv[3];
 };
+struct MilestonePacket {
+    PacketHeader h;
+    uint32_t msgId;        // the copies of one completion carry the same number
+    uint32_t key;          // milestone key / speed trap trigger key (game data, the same on both PCs)
+    float    value;        // the sender's recorded value (milestone) / speed in m/s (speed trap)
+    uint16_t bin;          // rival number the entry belongs to
+    uint8_t  kind;         // 0 milestone, 1 speed trap
+    uint8_t  pad;
+};
 struct FileAckPacket {
     PacketHeader h;
     uint32_t fileHash;
@@ -253,6 +263,9 @@ namespace Net {
     extern void (*OnCarHit)(uint16_t id, const float* dv);
     void SendHit(const float* dv);
     extern void (*OnHit)(const float* dv);
+    // [Career] SharedMilestones: one completion (the game layer repeats it; copies share msgId)
+    void SendMilestone(uint32_t msgId, uint8_t kind, uint32_t key, uint16_t bin, float value);
+    extern void (*OnMilestone)(uint32_t msgId, uint8_t kind, uint32_t key, uint16_t bin, float value);
     // Small reliable file transfer (resent until acknowledged, ~10 s). One outgoing file at a time.
     // The receiver checks sizes, chunk numbers and the hash; the names are passed on as received
     // (NUL-terminated, up to 32 characters) and are NOT safe as file names: see saveutil.h.

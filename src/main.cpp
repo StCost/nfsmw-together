@@ -181,7 +181,7 @@ namespace {
         // Test commands ([Debug] TestKeys=1): one command per line in scripts\MWTogether.cmd, the file is
         // deleted once read. Lets tests drive the game while it runs in the background.
         //   event <id> | events | restart | autopilot | cop | uncop | pursuit | clone | unclone | notice <text> | shot <file> | accept <package>
-        //   | skipnis | story | story <movie>
+        //   | skipnis | story | story <movie> | milestones | milestone | speedtrap | flash
         static DWORD lastCmdCheck = 0;
         if (g_cfg.testKeys && g_gameOk && GetTickCount() - lastCmdCheck >= 500) {
             lastCmdCheck = GetTickCount();
@@ -219,6 +219,10 @@ namespace {
                     else if (c.rfind("story ", 0) == 0) r = Game::DebugStory(c.substr(6).c_str());
                     else if (c == "slowai") r = Game::DebugStopOpponents();
                     else if (c == "cash") r = Game::DebugCash();
+                    else if (c == "milestones") r = Game::DebugMilestones("");
+                    else if (c == "milestone") r = Game::DebugMilestones("milestone");
+                    else if (c == "speedtrap") r = Game::DebugMilestones("speedtrap");
+                    else if (c == "flash") r = Game::DebugFlash();
                     else if (c == "pursuit") r = Game::DebugForcePursuit();
                     else if (c == "clone") r = Game::DebugSpawnClone();
                     else if (c == "unclone") r = Game::DebugKillClone();
@@ -342,6 +346,7 @@ namespace {
         if (g_netOk && g_gameOk) Game::StoryTick(linked);
         if (g_netOk && g_gameOk) Game::SaveTick(linked);
         if (g_netOk && g_gameOk) Game::CoopWinTick(linked, Net::Latest());
+        if (g_netOk && g_gameOk) Game::MilestoneTick(linked);
         Macro::Tick();
         }
 
@@ -384,6 +389,10 @@ namespace {
             }
         }
         if (g_gameOk && Game::TakeCoopWinNotice()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " won - it counts as your win too");
+        if (g_gameOk) {
+            std::string ms = Game::TakeMilestoneNotice();
+            if (!ms.empty()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " completed a " + ms);
+        }
         {   // connection problems the player should know about (shown once per message)
             static std::string lastErr;
             std::string ne = (g_netOk && !st.connected) ? Net::LastError() : "";
