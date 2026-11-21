@@ -279,7 +279,16 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
     g_localChased = pursuit != nullptr;
 
     // ---- the other player is chased: so are we, wherever we are (one shared pursuit) ----
-    if (me && !pursuit && peer.valid && (peer.s.pursuitFlags & PURSUIT_ACTIVE) && peer.s.gameFlowState == 6 && !peer.s.eventHash) {
+    // Only a pursuit that has just started there pulls us in (within 30 s of its start), and never right after
+    // our own pursuit ended: at an escape the two games end a moment apart, and the later one must not drag
+    // the earlier one back into a chase.
+    static bool peerWasActive = false; static DWORD peerStartAt = 0, ownEndAt = 0; static bool hadOwn = false;
+    bool peerActive = peer.valid && (peer.s.pursuitFlags & PURSUIT_ACTIVE) && peer.s.gameFlowState == 6 && !peer.s.eventHash;
+    if (peerActive && !peerWasActive) peerStartAt = now;
+    peerWasActive = peerActive;
+    if (hadOwn && !pursuit) ownEndAt = now;
+    hadOwn = pursuit != nullptr;
+    if (me && !pursuit && peerActive && now - peerStartAt < 30000 && (!ownEndAt || now - ownEndAt > 30000)) {
         static DWORD nextJoin = 0;
         if ((int)(now - nextJoin) >= 0) {
             nextJoin = now + 20000;   // if the game starts none (no cops around yet), try again later
