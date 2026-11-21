@@ -124,6 +124,7 @@ namespace {
         int      n = 0;        // valid samples (newest at index n-1)
         double   lastSeen = 0; // local ms
         int      fails = 0;
+        double   noSpawnUntil = 0; // local ms: the game just deleted our copy to make room - don't build it again at once
         bool     racer = false; // a race opponent of the host: drives one of our own racers (no spawn)
         uint32_t wid = 0;       // racer: world id of our racer it drives (a new race may build another car at that address)
         double   unboundSince = 0;   // racer: local ms since it waits for one of our racers
@@ -588,7 +589,10 @@ static void SharedPursuitCopHit(uint16_t mirrorId);   // pursuit.inl
 
 bool Game::InstallTrafficHooks() {
     // the game deleted one of our mirror cars to make room (and may build a new car in its memory): forget it now
-    g_onMirrorRemoved = [](void* iv) { for (auto& m : g_mirrors) if (m.used && !m.bound && m.iv == iv) m.iv = nullptr; };
+    // (and wait 3 s before building it again: two copies over the car budget evicted each other every frame)
+    g_onMirrorRemoved = [](void* iv) {
+        for (auto& m : g_mirrors) if (m.used && !m.bound && m.iv == iv) { m.iv = nullptr; m.noSpawnUntil = Net::LocalClockMs() + 3000.0; }
+    };
     uint8_t op = 0; int32_t rel = 0;
     if (!Mem::Read(DensityCallSite, op) || !Mem::Read(DensityCallSite + 1, rel) || op != 0xE8 ||
         DensityCallSite + 5 + rel != ComputeDensityFn) {
@@ -905,6 +909,7 @@ static int MaintainMirrors(double now) {
             void* grb = RigidBodyOf(g_ghost);
             if ((lrb && Dist(RB_GetVec(lrb, RB_GetPosition), e.pos) < 6.f) ||
                 (grb && Dist(RB_GetVec(grb, RB_GetPosition), e.pos) < 6.f)) continue;
+            if (Net::LocalClockMs() < m.noSpawnUntil) continue;   // the game just deleted it for room
             // SmoothHandover: only where the player can't see it pop in (or one of our cars becomes it)
             bool placed = smooth && !(e.flags & 1);
             if (placed && !PlaceHostCar(m, cam, lp, gp, own)) { if (!m.iv) ++g_hoWaiting; continue; }

@@ -129,10 +129,10 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Race intro cutscenes play normally for both
 - [x] A win by either player counts for both: cash, unlocks and career progress in each player's own career (`SharedWins`)
 - [x] The other player's finish is shown in your standings
-- [x] When one of you finishes first, the other is finished as the winner right away, even while still driving: 1st place, the winner's screen, the payout, and in rival races the rival's progress, each in their own career (`SharedWins`) (?)
+- [x] When one of you finishes first, the other is finished as the winner right away, even while still driving: 1st place, the winner's screen, the payout, and in rival races the rival's progress, each in their own career (`SharedWins`)
 - [x] Blacklist rival races: the rival on the client follows the host's rival, also in the second race of the series and when the two games built different cars for it
 - [x] Blacklist rival races: you both race the rival in the same event (your partner's car drives alongside, outside the standings), and each of you gets the normal rival flow after winning
-- [x] Blacklist rival races together have one more AI racer on the rival's side: one more car to beat, with the game's normal racing AI and normal catch-up (not the rival's). Its car is the rival's cutscene partner when that model is loaded, else the game's pick; both PCs build the same car (`[Coop] BossHelper`, 0 = the rival alone) (?)
+- [x] Blacklist rival races together have one more AI racer on the rival's side: one more car to beat, with the game's normal racing AI and normal catch-up (not the rival's). Its car is the rival's cutscene partner when that model is loaded, else the game's pick; both PCs build the same car (`[Coop] BossHelper`, 0 = the rival alone)
 - [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose
 - [x] Bounty counts for each player's own career (seen after an escape)
 - [x] Shared milestones: when one of you completes a milestone or a speed trap of your Blacklist rival, the other player gets it too, with its bounty, if their career is at the same rival (`[Career] SharedMilestones`)
