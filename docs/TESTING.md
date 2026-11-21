@@ -47,7 +47,6 @@ second, deletes it and logs `Command '<text>': <result>`. This works with the ga
 | `notice <text>` | show a notice in the game's banner |
 | `milestones` | log our rival's open and done milestones / speed traps (key, rival, value) and print the counts |
 | `milestone` / `speedtrap` | complete the first open milestone / speed trap of our rival here, through the game's own award (bounty included), as if we had earned it. With co-op on it's then sent to the other player |
-| `flash` | flash our headlights for 5 s, as if the speedbreaker bind were held (co-op on only) |
 | `shot <file.bmp>` | save the next frame (without the overlay) |
 | `accept <Screen.fng>` | send "accept" to a menu screen |
 
@@ -161,18 +160,6 @@ shows the rival number; `milestones` prints it). At start-up both logs show
 | In a race | C starts `event 15.1.1`, then H: `milestone` | C logs `the other player completed ...` at once and applies it only after the race, back in free roam |
 | Loading | quit to the menu and load the career again | `Milestones: the lists changed (career loaded?) ...` at most; no `we completed` lines for old progress |
 | Off | `SharedMilestones=0` on both | `Milestones: SharedMilestones=0 - each player keeps their own`; no `Milestones:` sharing lines |
-
-## Headlight flash (`[Coop] FlashLights`)
-
-Both PCs in free roam, linked, near each other, `NoSpeedbreaker=1`. At start-up both logs show
-`Lights: hold the speedbreaker bind to flash the headlights in co-op (render hooks installed)`.
-
-| Check | How | Pass |
-|---|---|---|
-| Flash | H: hold the speedbreaker key / pad button (or `flash`) | H `Lights: flashing our headlights (speedbreaker bind held, 1 so far)`; H's own headlight flares grow and brighten while held and go back when released. C: `Lights: the other player flashes their headlights (1 so far)`; H's car on C's screen flashes at the same moment. Nothing slows down (`Co-op: speedbreaker switched off` may show, as before). |
-| Keyboard and pad | try both binds, and a re-bound key from the game's controls menu | each flashes; releasing stops it within a frame |
-| Daylight | flash where the game shows no headlight glow | the flares appear while held |
-| Solo | not connected (or `FlashLights=0`) | the speedbreaker works as in the plain game, no `Lights:` flash lines |
 
 ## Story scenes (`SyncStoryScenes`)
 

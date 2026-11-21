@@ -50,7 +50,6 @@ void Config::Load(const char* ini) {
     saveSync = ReadInt(ini, "Career", "SaveSync", 1) != 0;
     sharedWins = ReadInt(ini, "Career", "SharedWins", 1) != 0;
     sharedMilestones = ReadInt(ini, "Career", "SharedMilestones", 1) != 0;
-    flashLights = ReadInt(ini, "Coop", "FlashLights", 1) != 0;
     startTogether = ReadInt(ini, "Coop", "StartTogether", 1) != 0;
     separateGridSlots = ReadInt(ini, "Coop", "SeparateGridSlots", 1) != 0;
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;

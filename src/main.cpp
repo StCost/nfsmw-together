@@ -225,7 +225,6 @@ namespace {
                     else if (c == "milestones") r = Game::DebugMilestones("");
                     else if (c == "milestone") r = Game::DebugMilestones("milestone");
                     else if (c == "speedtrap") r = Game::DebugMilestones("speedtrap");
-                    else if (c == "flash") r = Game::DebugFlash();
                     else if (c == "pursuit") r = Game::DebugForcePursuit();
                     else if (c == "clone") r = Game::DebugSpawnClone();
                     else if (c == "unclone") r = Game::DebugKillClone();

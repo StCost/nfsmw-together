@@ -77,8 +77,6 @@ namespace Game {
     void MilestoneTick(bool linked);    // find our completions, send them, apply the other player's
     std::string TakeMilestoneNotice();  // "milestone - it counts for you too" once after one was applied here
     std::string DebugMilestones(const char* arg);   // test: "" list / "milestone" / "speedtrap" complete the first open one
-    bool InstallFlashLights();          // [Coop] FlashLights (lights.inl)
-    std::string DebugFlash();           // test: flash our headlights for 5 s
     bool InstallCatchUp();              // AI catch-up measured against the leading human
     bool InstallCoopWin();              // shared wins
     void CoopWinTick(bool connected, const Net::Snapshot& peer);
