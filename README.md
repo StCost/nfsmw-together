@@ -15,7 +15,7 @@ Wanted online free roam with a friend, Need for Speed Most Wanted two player mod
 <details open><summary><h2>Install</h2></summary>
 
 
-1. Download the latest zip from **[Releases](https://github.com/StCost/nfsmw-together/releases/latest)** and unpack it into your game folder, next to `speed.exe`.
+1. Download **[MWTogether.zip](https://github.com/StCost/nfsmw-together/releases/latest/download/MWTogether.zip)** (the latest release) and unpack it into your game folder, next to `speed.exe`.
 2. Run `MWTogetherLauncher.exe`. Type a nickname, pick **Host LAN** or **Join LAN** (to join, enter the
    host's IP address) and press **PLAY**.
 3. Do the same on the other PC. The game skips the intro, loads your career into free roam and the two of

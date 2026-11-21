@@ -67,5 +67,12 @@ git tag "v$Version"
 git push origin "v$Version"
 $flags = @('--generate-notes', '--title', "NFS MW Together $Version")
 if (-not $Final) { $flags += '--prerelease' }
-gh release create "v$Version" @assets @flags
+# the release assets always have the same names, so README can link releases/latest/download/MWTogether.zip
+$named = @()
+foreach ($a in $assets) {
+    $fixed = Join-Path $dist ((Split-Path $a -Leaf) -replace "-$([regex]::Escape($Version))", "")
+    Copy-Item $a $fixed -Force
+    $named += $fixed
+}
+gh release create "v$Version" @named @flags
 Write-Host "Released v$Version"
