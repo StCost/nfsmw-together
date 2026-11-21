@@ -1207,7 +1207,7 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
             // spawn protection: never create the car inside the local player (same spawn point / grid slot)
             float spawnPos[3] = { latest.s.pos[0], latest.s.pos[1], latest.s.pos[2] };
             if (void* lrb0 = RigidBodyOf(LocalVehicle())) {
-                if (Dist(RB_GetVec(lrb0, RB_GetPosition), spawnPos) < 4.f) {   // on our spot: behind us, a little to the left
+                if (Dist(RB_GetVec(lrb0, RB_GetPosition), spawnPos) < 4.f && Game::CurrentEventHash()) {   // a race with no grid slot for them: behind us, a little to the left
                     if (!BehindLeftOf(lrb0, spawnPos)) { spawnPos[0] += -dir[2] * 5.f; spawnPos[2] += dir[0] * 5.f; spawnPos[1] += 0.5f; }
                 }
             }
@@ -1332,10 +1332,11 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         if (!g_protectHolding && Dist(lp, s.pos) > (float)g_cfg.safeDistance) {
             g_separated = true;
             LOG("Spawn protection off: players are %.0f m apart", Dist(lp, s.pos));
-        } else if (Dist(lp, s.pos) < 4.f) {
+        } else if (Dist(lp, s.pos) < 4.f && Game::CurrentEventHash() && g_ghostKind != GK_RACER) {
             // never frozen: their car moves with them all the time, collisions between the two cars stay off
-            // until they are apart. Only while they would stand inside our car (both games put their player on
-            // the same spot: safe house, a rival race start) it is shown behind us, a little to the left.
+            // until they are apart. Only in a race where they have no grid slot (a rival race: their car isn't
+            // a racer) and both games put their player on the same spot, it is shown behind us, a little to the
+            // left. Everywhere else it is exactly where they are.
             BehindLeftOf(lrbP, s.pos);
         }
     }
