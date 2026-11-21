@@ -41,7 +41,7 @@ namespace {
     // otherwise as a line in the corner (drawn by the overlay, also when the overlay is hidden).
     void Toast(const std::string& s) {
         bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron(s.c_str(), "NFS MW Together", "");
-        if (inGame) g_toast.clear(); else { g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0; }
+        g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0;   // the corner line stays 10 s (the game's banner is short)
         LOG("Notice: %s%s", s.c_str(), inGame ? " (game banner)" : "");
     }
 
@@ -373,7 +373,7 @@ namespace {
             std::string ss = g_gameOk ? Game::StoryStatus() : "";
             if (ss != lastStory) { if (!ss.empty()) Toast(ss); lastStory = ss; }
         }
-        bool toastOn = !g_toast.empty() && GetTickCount() - g_toastAt < 6000;
+        bool toastOn = !g_toast.empty() && GetTickCount() - g_toastAt < 10000;
         Overlay::SetForceShow(toastOn);
 
         // --- overlay text (rebuild ~5x per second, texture upload is not free) ---
