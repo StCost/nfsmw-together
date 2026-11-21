@@ -33,7 +33,8 @@ namespace {
     std::string g_spawnMsg;
     bool        g_bgBoot = false;             // booting without focus
     HWND        g_prevForeground = nullptr;   // the window that had focus when the game started
-    std::string g_toast;                      // short notification (player joined / left)
+    std::string g_toast;                      // (no longer shown: notices use the game's banner only)
+    std::string g_pendingNotice; uint32_t g_pendingAt = 0;   // a notice waiting for the banner
     uint32_t    g_toastAt = 0;
     bool        g_coopHere = true;            // this profile may play co-op (career started, prologue done)
     const char* g_coopStatus = "";            // overlay line when co-op is off because of the prologue
@@ -68,7 +69,9 @@ namespace {
     }
     void Toast(const std::string& s) {
         bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron(s.c_str(), "NFS MW Together", "");
-        if (inGame) g_toast.clear(); else { g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0; }   // the game's banner, or a corner line where it can't show
+        // only the game's own banner: where it can't show right now (loading, a menu), the notice waits
+        // and appears as soon as it can (the newest one; dropped after 20 s)
+        if (inGame) g_pendingNotice.clear(); else { g_pendingNotice = s; g_pendingAt = GetTickCount(); }
         LOG("Notice: %s%s", s.c_str(), inGame ? " (game banner)" : "");
     }
 
@@ -413,7 +416,15 @@ namespace {
             std::string ss = g_gameOk ? Game::StoryStatus() : "";
             if (ss != lastStory) { if (!ss.empty()) Toast(ss); lastStory = ss; }
         }
-        bool toastOn = !g_toast.empty() && GetTickCount() - g_toastAt < (DWORD)g_cfg.noticeSeconds * 1000;
+        if (!g_pendingNotice.empty()) {   // a notice that couldn't show yet: try the banner again
+            static DWORD nextTry = 0;
+            if (GetTickCount() - g_pendingAt > 20000) g_pendingNotice.clear();
+            else if (GetTickCount() >= nextTry) {
+                nextTry = GetTickCount() + 500;
+                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron(g_pendingNotice.c_str(), "NFS MW Together", "")) g_pendingNotice.clear();
+            }
+        }
+        bool toastOn = false;   // the black corner box is gone
         Overlay::SetForceShow(toastOn);
 
         // --- overlay text (rebuild ~5x per second, texture upload is not free) ---

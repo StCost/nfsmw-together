@@ -409,12 +409,18 @@ bool Game::ShowChyron(const char* title, const char* line2, const char* line3) {
     static char t[3][64];
     __try {
         int blocked = 0; void* fe = nullptr;
-        if (!Mem::Read(0x8EE348, blocked) || blocked > 0 || !Mem::Read(0x91CADC, fe) || !fe) return false;
-        if (NisActive()) return false;
+        if (!Mem::Read(0x8EE348, blocked) || !Mem::Read(0x91CADC, fe) || !fe) return false;
+        // during a cutscene the game holds its own banners back (counter 0x8EE348 > 0); ours (e.g. the skip
+        // vote) are wanted there too, so lift the hold for this one call
+        bool nis = NisActive();
+        if (blocked > 0 && !nis) return false;
+        int zero = 0;
+        if (blocked > 0) Mem::Write(0x8EE348, zero);
         strncpy_s(t[0], title ? title : "", _TRUNCATE);
         strncpy_s(t[1], line2 ? line2 : "", _TRUNCATE);
         strncpy_s(t[2], line3 ? line3 : "", _TRUNCATE);
         ((void(__cdecl*)(const char*, const char*, const char*))0x595ED0)(t[0], t[1], t[2]);
+        if (blocked > 0) Mem::Write(0x8EE348, blocked);   // the cutscene's hold back
         // The banner appears 5 s after it is summoned (screen +0x2C = tick of the request, 4000 ticks/s,
         // NotificationMessage 0x595E80 waits until 5 s have passed). Backdate it so ours shows at once.
         void* reg = nullptr; DWORD now = 0;
