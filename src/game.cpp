@@ -795,6 +795,7 @@ bool Game::InstallVehicleFactoryHook() {
     };
     InstallCoopWin();
     InstallCatchUp();
+    InstallNoSlowMotion();
     InstallMinimapHook();
     InstallWorldMapHook();
     LOG("Hooked vehicle factory (races: AI racer -> peer car)");

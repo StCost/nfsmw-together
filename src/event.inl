@@ -299,6 +299,27 @@ static void CoopRulesImpl() {
         VCall<void(__thiscall*)(void*, bool)>(pl, 18)(pl, false);
 }
 
+// No slow motion in co-op: every slow-motion moment (speed trap flash, pursuit start / crash / finish
+// cameras, the speedbreaker, GameSpeed) goes through one time-scale provider, the local player's method 1
+// (0x6F4D10, vtable entries 0x8B09A4 and 0x8B0A14). The sim kernel step 0x6F6CF0 multiplies its dt by
+// what it returns. While co-op is on we return 1.0: the cameras still play, just in real time.
+namespace {
+    using TimeScaleFn = float(__thiscall*)(void*, float, float);
+    float __fastcall hk_TimeScale(void* self, void*, float dt, float cur) {
+        if (g_cfg.noSlowMotion && g_coopLinked && Net::Stats().connected) return 1.0f;
+        return ((TimeScaleFn)0x6F4D10)(self, dt, cur);
+    }
+}
+bool Game::InstallNoSlowMotion() {
+    int n = 0;
+    for (uintptr_t slot : { (uintptr_t)0x8B09A4, (uintptr_t)0x8B0A14 }) {
+        uintptr_t cur = 0;
+        if (Mem::Read(slot, cur) && cur == 0x6F4D10) { Mem::PatchPointer((void*)slot, (void*)&hk_TimeScale); ++n; }
+    }
+    LOG("Co-op: real-time (no slow motion) hook %d/2", n);
+    return n == 2;
+}
+
 void Game::CoopRulesTick(bool connected) {
     if (!g_ok || !connected || !g_cfg.noSpeedbreaker || GameFlowState() != 6) return;
     __try { CoopRulesImpl(); } __except (EXCEPTION_EXECUTE_HANDLER) {}

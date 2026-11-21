@@ -51,6 +51,7 @@ void Config::Load(const char* ini) {
     sharedWins = ReadInt(ini, "Career", "SharedWins", 1) != 0;
     startTogether = ReadInt(ini, "Coop", "StartTogether", 1) != 0;
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;
+    noSlowMotion = ReadInt(ini, "Coop", "NoSlowMotion", 1) != 0;
     syncStoryScenes = ReadInt(ini, "Coop", "SyncStoryScenes", 1);
     if (syncStoryScenes < 0 || syncStoryScenes > 2) syncStoryScenes = 1;
     readyDelayMs = ReadInt(ini, "Debug", "ReadyDelayMs", 0);

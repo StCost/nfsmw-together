@@ -37,7 +37,8 @@ namespace Game {
     void PauseRuleTick(bool connected);
     std::string ToggleAutopilot();
     bool ShowChyron(const char* title, const char* line2, const char* line3);   // the game's song-title banner with our text
-    bool CoopAllowed();                 // this profile may play co-op (career started, prologue done)
+    bool CoopAllowed();
+    bool InstallNoSlowMotion();         // [Coop] NoSlowMotion: everything in real time while connected                 // this profile may play co-op (career started, prologue done)
     void SetCoopLinked(bool linked);    // co-op features on/off this frame (connected and both allowed)
     uint8_t RaceStage();                // 0 none, 1 loading / intro, 2 on the grid
     const char* StartStatus();          // "waiting for <name> to load..." while we hold the start
