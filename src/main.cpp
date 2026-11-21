@@ -41,7 +41,7 @@ namespace {
     // otherwise as a line in the corner (drawn by the overlay, also when the overlay is hidden).
     void Toast(const std::string& s) {
         bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron(s.c_str(), "NFS MW Together", "");
-        g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0;   // the corner line stays 10 s (the game's banner is short)
+        if (inGame) g_toast.clear(); else { g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0; }   // the game's banner, or a corner line where it can't show
         LOG("Notice: %s%s", s.c_str(), inGame ? " (game banner)" : "");
     }
 
