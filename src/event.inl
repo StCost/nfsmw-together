@@ -63,7 +63,10 @@ namespace {
         void* cur = CurrentParms(&mode);
         const char* resultsScreen = FEScreens::IsPushed("PostRace_Results.fng") ? "PostRace_Results.fng"
                                   : FEScreens::IsPushed("InGamePhotoMaster.fng") ? "InGamePhotoMaster.fng"   // winner's photo
-                                  : FEScreens::IsPushed("InGameRivalChallenge.fng") ? "InGameRivalChallenge.fng"   // "race the rival" between rival races: continue like they did
+                                  // "race the rival" between rival races: continue like they did - only when both
+                                  // careers are at the same rival (else ours would start a different rival's race)
+                                  : (FEScreens::IsPushed("InGameRivalChallenge.fng") && Net::Latest().valid &&
+                                     Net::Latest().s.pad[2] && Net::Latest().s.pad[2] == Game::CareerBin()) ? "InGameRivalChallenge.fng"
                                   : nullptr;
         if (cur && mode == 1 && fromPeer && EventHashOf(cur) != eventHash && resultsScreen) {
             void* db0 = nullptr; Mem::Read(0x91E004, db0);

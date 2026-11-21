@@ -304,6 +304,19 @@ namespace {
                     LOG("Net: no answer from the host %s - wrong IP, or a firewall blocks UDP %d", g_cfg.peerIp.c_str(), g_cfg.port);
                 }
             }
+            {   // careers at different Blacklist rivals: say so once (the rival screens and milestones differ then)
+                static int toldMine = -1, toldTheirs = -1;
+                const Net::Snapshot& ps = Net::Latest();
+                int mine = g_gameOk ? Game::CareerBin() : 0, theirs = ps.valid ? ps.s.pad[2] : 0;
+                if (st.connected && linked && mine >= 1 && mine <= 15 && theirs >= 1 && theirs <= 15 && mine != theirs &&
+                    (mine != toldMine || theirs != toldTheirs)) {
+                    toldMine = mine; toldTheirs = theirs;
+                    std::string who = st.peerName.empty() ? std::string("The other player") : st.peerName;
+                    Toast(who + " is at Blacklist #" + std::to_string(theirs) + ", you are at #" + std::to_string(mine) +
+                          (mine > theirs ? " - beat your rival to catch up" : " - they need to beat their rival to catch up"));
+                    LOG("Career: different rivals - ours #%d, theirs #%d", mine, theirs);
+                }
+            }
             // say when it changes: off -> on (both past the prologue) and on -> off
             static int lastLinked = -1;
             int nowLinked = st.connected ? (linked ? 1 : 0) : -1;
