@@ -93,6 +93,9 @@ namespace {
         if (path.empty()) return;
         uint64_t mine = FileTime64(path);
         if (!SaveUtil::HostCopyIsNewer(mine, mtime)) { LOG("Career: our save '%s' is up to date", profile); return; }
+        // the save file also holds this player's own settings (camera, units, controls): an existing save is
+        // never replaced, only a missing one is restored ([Career] RestoreOnlyMissing, on by default)
+        if (mine && g_cfg.restoreOnlyMissing) { LOG("Career: the host's copy of '%s' is newer, but we keep our own save and settings (RestoreOnlyMissing=1)", profile); return; }
         if (mine) {
             // no backup, no overwrite
             if (!CopyFileA(path.c_str(), (path + ".mwt-backup").c_str(), FALSE)) {

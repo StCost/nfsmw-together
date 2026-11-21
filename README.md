@@ -54,7 +54,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
   busted together. Your partner's cops show on your minimap and set off your radar detector.
 - **One world.** Shared traffic when you're near by, collisions between your cars, blips on the minimap and map.
 - **Saves.** Everyone keeps their own career save. The host stores a copy of the partner's save after every
-  autosave and hands it back if theirs is ever missing or older.
+  autosave and hands it back if theirs is ever missing. An existing save is never replaced, so everyone's own settings (camera, units, controls) stay theirs.
 - **Not yet:** 4 players, and prologue together.
 
 
@@ -141,7 +141,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 <details><summary><b>Career</b></summary>
 
 - [x] Each player keeps their own career; wins are shared, so both careers move forward together
-- [x] The host keeps a copy of the other player's career save, updated after every autosave. If that player's own save is missing or older when they connect, it's restored from the host (their old file is kept as a backup)
+- [x] The host keeps a copy of the other player's career save, updated after every autosave. If that player's own save is missing when they connect, it's restored from the host. An existing save is never replaced, so each player's settings stay their own (`[Career] RestoreOnlyMissing`)
 - [x] Cutscene skip voting: a cutscene you both watch is skipped only when both press skip
 - [x] Story scenes outside events: when one of you gets a story movie (Blacklist rival movie, story FMV, also in the Safe House) or a story cutscene in the world, the other gets a notice and their game waits in free roam until it's over (`SyncStoryScenes`)
 - [x] With `SyncStoryScenes=2` the same story movie also plays on the other PC if their career has got that far, and a movie you both watch is skipped only when both press skip (in-world cutscenes are never started on the other PC) (?)

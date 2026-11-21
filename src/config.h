@@ -30,6 +30,7 @@ struct Config {
     bool        keepPadBindings = true;   // [Input] KeepPadBindings - starting without the pad keeps its bindings
     bool        skipPursuitResults = false; // [UI] SkipPursuitResults - close the pursuit result screen in free roam
     bool        startInBackground = false; // [Window] StartInBackground - give focus back on start, game muted until clicked
+    bool        restoreOnlyMissing = true; // [Career] RestoreOnlyMissing - the host restores our save only if it is gone
     bool        syncWeather = true;      // [Coop] SyncWeather - the client shows the host's rain
     bool        sharedPursuits = true;   // [Coop] SharedPursuits - shared heat, busted together, cooldown / escape together,
                                          // the other player's cops on the radar, ramming their cop starts a pursuit
