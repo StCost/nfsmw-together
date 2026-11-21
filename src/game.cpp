@@ -896,7 +896,8 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
         }
         LOG("Race: AI racer built as peer car (key %08X) -> %p", vp->carType, g_replacedRacer);
         g_peerSlotValid = vp->initialPos && Mem::SafeRead(vp->initialPos, g_peerSlot, sizeof(g_peerSlot)) &&
-                          NetUtil::FiniteWithin(g_peerSlot, 3, NetUtil::MAX_POS);
+                          NetUtil::FiniteWithin(g_peerSlot, 3, NetUtil::MAX_POS) &&
+                          (fabsf(g_peerSlot[0]) + fabsf(g_peerSlot[1]) + fabsf(g_peerSlot[2])) > 1.f;   // 0,0,0: not placed yet (read later)
         if (g_peerSlotValid) LOG("Race: the other player's grid slot %.1f %.1f %.1f", g_peerSlot[0], g_peerSlot[1], g_peerSlot[2]);
     }
     return simable;
@@ -1235,6 +1236,16 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
             RET(g_spawnFails ? "peer car spawn failed - retrying" : "spawning peer car...");
         }
         g_ghost = iv;
+        if (g_ghostKind == GK_RACER && iv == g_replacedRacer && !g_peerSlotValid) {
+            // the race places its racers after building them: read the slot now, before we move this car
+            if (void* rb0 = RigidBodyOf(iv)) {
+                const float* p0 = RB_GetVec(rb0, RB_GetPosition);
+                if (p0 && (fabsf(p0[0]) + fabsf(p0[1]) + fabsf(p0[2])) > 1.f) {
+                    memcpy(g_peerSlot, p0, 12); g_peerSlotValid = true;
+                    LOG("Race: the other player's grid slot %.1f %.1f %.1f (where the race placed their racer)", p0[0], p0[1], p0[2]);
+                }
+            }
+        }
         if (g_ghostKind == GK_RACER) DisableAI(iv);
         strncpy_s(g_ghostName, VehName(iv), _TRUNCATE);
         SetCollisions(iv, false);
