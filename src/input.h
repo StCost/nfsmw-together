@@ -4,7 +4,8 @@
 // DirectInput, so synthetic Windows key events are ignored). Used by AutoStart to get from the
 // title screen into the career without anyone touching the menus.
 namespace Input {
-    bool InstallHooks();              // IAT hook on DirectInput8Create; call from DllMain
+    bool InstallHooks();
+    void TapBackground(unsigned char dik);   // test: a key press the game sees without focus (keyboard device state)              // IAT hook on DirectInput8Create; call from DllMain
 
     // Press-and-release a DirectInput key (DIK_* scan code) over the next few frames.
     bool Tap(unsigned char dik);      // false if not sent (game window not focused / busy)
@@ -33,7 +34,8 @@ namespace Macro {
 // and keeping the player's controller bindings when the game starts without the pad
 // ([Input] KeepPadBindings).
 namespace Pad {
-    bool InstallHooks();              // call from DllMain, after the config is loaded
+    bool InstallHooks();
+    void TapBackground(unsigned char dik);   // test: a key press the game sees without focus (keyboard device state)              // call from DllMain, after the config is loaded
     void OnDeviceChange();            // WM_DEVICECHANGE on the game window
     void Tick(int gameFlowState);     // once per frame, game thread
 }

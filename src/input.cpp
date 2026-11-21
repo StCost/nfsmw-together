@@ -30,6 +30,7 @@ namespace {
 
     // tap state
     unsigned char g_dik = 0;
+    volatile unsigned char g_bgKey = 0; volatile DWORD g_bgKeyAt = 0;   // test command "key" (no focus needed)
     bool     g_down = false;        // key currently held (for GetDeviceState)
     DWORD    g_downAt = 0;
     bool     g_pendPress = false;   // event not yet delivered via GetDeviceData
@@ -43,7 +44,14 @@ namespace {
         HRESULT hr = o_GetState(dev, cb, data);
         if (dev == g_keyboard && cb == 256 && data) {
             if (!g_loggedState) { g_loggedState = true; LOG("Input: game polls keyboard with GetDeviceState"); }
-            // (no injection here any more: keys go through SendInput, see Input::Tap)
+            // (normal taps go through SendInput, see Input::Tap.) Test command "key": a key the game sees
+            // even without focus - the device state is filled in for ~120 ms, then left up for ~120 ms
+            if (g_bgKey) {
+                DWORD t = GetTickCount() - g_bgKeyAt;
+                if (t < 120) { if (FAILED(hr)) { memset(data, 0, 256); hr = DI_OK; } ((unsigned char*)data)[g_bgKey] = 0x80; }
+                else if (t < 240) { if (FAILED(hr)) { memset(data, 0, 256); hr = DI_OK; } ((unsigned char*)data)[g_bgKey] = 0; }
+                else g_bgKey = 0;
+            }
         }
         return hr;
     }
@@ -119,6 +127,7 @@ static void SendScan(unsigned char dik, bool up) {
     SendInput(1, &in, sizeof(in));
 }
 
+void Input::TapBackground(unsigned char dik) { g_bgKeyAt = GetTickCount(); g_bgKey = dik; }
 bool Input::Tap(unsigned char dik) {
     if (Busy()) return false;
     HWND w = Overlay::GameWindow();

@@ -216,6 +216,8 @@ namespace {
                     else if (c == "ram") r = Game::DebugRam();
                     else if (c == "ram cop") r = Game::DebugRam(true);
                     else if (c == "pos") r = Game::DebugPos();
+                    else if (c == "key enter") { Input::TapBackground(0x1C); r = "enter pressed (background)"; }
+                    else if (c == "key esc") { Input::TapBackground(0x01); r = "escape pressed (background)"; }
                     else if (c.rfind("tp ", 0) == 0) r = Game::DebugTeleport(c.substr(3).c_str());
                     else if (c == "skipnis") r = Game::DebugNisSkip();
                     else if (c == "story") r = Game::DebugStory("");
