@@ -654,6 +654,7 @@ namespace {
         return VCall<Fn>(iv, IV_GetCustomizations)(iv);
     }
 
+    void* g_killed[32] = {}; int g_killedNext = 0;   // cars we destroyed (see KillVehicle)
     void* SpawnVehicle(uint32_t carKey, const void* custom, const float pos[3], const float dir[3], int driverClass) {
         uint32_t typeHash = 0;
         ((uint32_t* (__cdecl*)(uint32_t*))Addr::VehicleParamsType)(&typeHash);
@@ -680,11 +681,16 @@ namespace {
             iv = ((FindFn)Addr::UCOM_Find)(object, 0x4040E0 /*IVehicle*/);
         }
         LOG("SpawnVehicle key %08X class %d -> simable %p ivehicle %p", carKey, driverClass, simable, iv);
-        if (iv) KeepCar(iv);
+        if (iv) { for (void*& k : g_killed) if (k == iv) k = nullptr; KeepCar(iv); }
         return IsVehicle(iv) ? iv : nullptr;
     }
 
+    // a car we already destroyed must never be destroyed again (seen at a race start: the same car killed
+    // twice in one frame, then the game called into the freed object - "pure virtual function call")
+    bool AlreadyKilled(void* iv) { for (void* k : g_killed) if (k == iv) return true; return false; }
     void KillVehicle(void* iv) {
+        if (!iv) return;
+        if (AlreadyKilled(iv)) { LOG("KillVehicle %p skipped - already destroyed", iv); return; }
         ForgetCar(iv);
         if (!IsVehicle(iv)) return;
         using GetSim = void* (__thiscall*)(void*);
@@ -692,6 +698,7 @@ namespace {
         if (!sim || VTable(sim) != Addr::VT_PVehicle_ISimable) { LOG("KillVehicle: unexpected ISimable %p", sim); return; }
         using KillFn = void(__thiscall*)(void*);
         VCall<KillFn>(sim, 2)(sim);
+        g_killed[g_killedNext] = iv; g_killedNext = (g_killedNext + 1) % 32;
         LOG("KillVehicle %p", iv);
     }
 

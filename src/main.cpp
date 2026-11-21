@@ -39,6 +39,33 @@ namespace {
     const char* g_coopStatus = "";            // overlay line when co-op is off because of the prologue
     // A short notice for the player: in the game's own banner (the EA Trax chyron) when it can show one,
     // otherwise as a line in the corner (drawn by the overlay, also when the overlay is hidden).
+    // The game's C++ runtime reports a fatal error (e.g. R6025 "pure virtual function call") in a box
+    // with Abort / Retry / Ignore, none of which can save the game. The runtime finds MessageBoxA at run
+    // time, so hook it at its entry (hot-patch prologue 8B FF 55 8B EC) and show one plain box instead.
+    bool IsRuntimeError(const char* text, const char* caption) {
+        auto has = [](const char* s, const char* w) { return s && strstr(s, w) != nullptr; };
+        return has(caption, "Visual C++") || has(text, "Runtime Error") || has(text, "Debug Error") || has(text, "R6025") || has(text, "R6016");
+    }
+    int WINAPI hk_MessageBoxA(HWND h, LPCSTR text, LPCSTR caption, UINT type) {
+        if (IsRuntimeError(text, caption)) {
+            LOG("CRASH: the game's runtime stopped it: %s", text ? text : "");
+            Net::SendBye();
+            std::string msg = "Need for Speed: Most Wanted crashed.\n\n";
+            if (text) { const char* r = strstr(text, "R60"); msg += r ? r : text; msg += "\n\n"; }
+            msg += "Please send scripts\\MWTogether.log from the game folder to the mod's authors.";
+            MessageBoxExA(nullptr, msg.c_str(), "NFS MW Together", MB_OK | MB_ICONERROR | MB_TOPMOST, 0);
+            TerminateProcess(GetCurrentProcess(), 3);
+        }
+        return MessageBoxExA(h, text, caption, type, 0);
+    }
+    void InstallCrashDialog() {
+        uint8_t* f = (uint8_t*)GetProcAddress(GetModuleHandleA("user32.dll"), "MessageBoxA");
+        const uint8_t pro[5] = { 0x8B, 0xFF, 0x55, 0x8B, 0xEC };
+        if (!f || memcmp(f, pro, 5)) { LOG("Crash dialog: MessageBoxA not hooked (unexpected bytes)"); return; }
+        uint8_t jmp[5] = { 0xE9 }; *(int32_t*)(jmp + 1) = (int32_t)((uintptr_t)&hk_MessageBoxA - ((uintptr_t)f + 5));
+        DWORD old;
+        if (VirtualProtect(f, 5, PAGE_EXECUTE_READWRITE, &old)) { memcpy(f, jmp, 5); VirtualProtect(f, 5, old, &old); FlushInstructionCache(GetCurrentProcess(), f, 5); LOG("Crash dialog: plain error box installed"); }
+    }
     void Toast(const std::string& s) {
         bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron(s.c_str(), "NFS MW Together", "");
         if (inGame) g_toast.clear(); else { g_toast = s; g_toastAt = GetTickCount(); g_lastOverlay = 0; }   // the game's banner, or a corner line where it can't show
@@ -472,6 +499,7 @@ BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID) {
         Perf::Enable(g_cfg.perf);
         g_prevForeground = GetForegroundWindow();
         Game::InstallBootPatches();
+        InstallCrashDialog();
         SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* e) -> LONG {
             LOG("CRASH: exception %08X at %p", (unsigned)e->ExceptionRecord->ExceptionCode, e->ExceptionRecord->ExceptionAddress);
             return EXCEPTION_CONTINUE_SEARCH;
