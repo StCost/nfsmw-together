@@ -415,6 +415,27 @@ uint32_t Game::SceneHash() {
     return NisSceneHash();
 }
 
+// Test 'careerbin <n>' (TestKeys=1, TEST PROFILES ONLY): set this career's current Blacklist rival
+// (user profile +0xB0, 1..15) in memory, e.g. 1 to try Razor's events (1.x) together with `event`. The
+// game saves it with its next autosave, so use it on a copy of a profile, never on a real career.
+static bool SetCareerBinRaw(int n, int& before) {
+    __try {
+        uint8_t* fedb = nullptr; uint8_t* up = nullptr;
+        if (!Mem::Read(0x91CF90, fedb) || !fedb || !fedb[3] || !Mem::Read((uintptr_t)fedb + 0x10, up) || !up) return false;
+        before = up[0xB0]; up[0xB0] = (uint8_t)n;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+std::string Game::DebugCareerBin(const char* arg) {
+    if (!g_ok) return "not ready";
+    int n = arg ? atoi(arg) : 0, before = 0;
+    if (n < 1 || n > 15) return "usage: careerbin <1..15> (test profiles only)";
+    if (!SetCareerBinRaw(n, before)) return "no profile loaded";
+    LOG("Career: TEST - current Blacklist rival set from #%d to #%d (saved with the next autosave: test profiles only)", before, n);
+    char r[96]; sprintf_s(r, "rival #%d -> #%d (test profiles only)", before, n);
+    return r;
+}
+
 uint8_t Game::CareerBin() {
     if (!g_ok) return 0;
     __try { return CareerBinRaw(); } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
