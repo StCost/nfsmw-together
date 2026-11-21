@@ -601,26 +601,48 @@ namespace {
     // agree to evicting other cars (traffic/cops). With no cache it simply fails. Interface (UCOM::IUnknown
     // layout: vtable, mCOMObject): [1] GetCacheName, [2] OnQueryVehicleCache(IVehicle*, IVehicleCache*)
     // -> 0 VCR_WANT / 1 VCR_DONTCARE, [3] OnRemovedVehicleCache(IVehicle*).
-    void* g_keepCars[8] = {};                 // cars we want kept (our spawned remote-player cars)
+    // The cache must also be in the game's list of caches (0x425300 on cache+8; array 0x92FDA4): the
+    // budget check (0x687710) asks only listed caches before it DELETES a vehicle to make room for a new
+    // traffic car / cop, and builds the new one in the same memory. Unlisted, the other player's car was
+    // deleted and our pointer then drove a cop or traffic car (seen as "his car turned into a taxi").
+    void* g_keepCars[64] = {};                // every car we spawned (the other player's car, mirrors)
+    void* g_removedCars[16] = {}; int g_removedNext = 0;   // ours the game deleted: the address may hold another car now
     void (*g_onCarRemoved)(void*) = nullptr;
 
     bool IsKeptCar(void* iv) { for (void* k : g_keepCars) if (k && k == iv) return true; return false; }
-    void KeepCar(void* iv) { for (void*& k : g_keepCars) if (!k) { k = iv; return; } }
+    void KeepCar(void* iv) {
+        for (void*& r : g_removedCars) if (r == iv) r = nullptr;     // this address is ours again
+        for (void*& k : g_keepCars) if (!k) { k = iv; return; }
+    }
     void ForgetCar(void* iv) { for (void*& k : g_keepCars) if (k == iv) k = nullptr; }
+    bool WasRemovedByGame(void* iv) { if (!iv) return false; for (void* r : g_removedCars) if (r == iv) return true; return false; }
 
     // __fastcall(ecx = this, edx = unused, stack args...) matches MSVC __thiscall with callee cleanup.
     void        __fastcall Cache_Dtor(void*, void*, int) {}
     const char* __fastcall Cache_GetName(void*, void*) { return "MWTogetherRemotePlayers"; }
-    int         __fastcall Cache_OnQuery(void*, void*, void* iv, void* /*asking*/) { return IsKeptCar(iv) ? 0 : 1; }
+    // keep the other player's car (and the test clone); mirror cars may go to make room - they come back
+    int         __fastcall Cache_OnQuery(void*, void*, void* iv, void* /*asking*/);
     void        __fastcall Cache_OnRemoved(void*, void*, void* iv) {
         if (IsKeptCar(iv)) {
             LOG("Vehicle cache: game removed our car %p", iv);
             ForgetCar(iv);
+            g_removedCars[g_removedNext] = iv; g_removedNext = (g_removedNext + 1) % 16;
             if (g_onCarRemoved) g_onCarRemoved(iv);
         }
     }
     void* g_cacheVtbl[4] = { (void*)&Cache_Dtor, (void*)&Cache_GetName, (void*)&Cache_OnQuery, (void*)&Cache_OnRemoved };
-    struct { void** vt; void* com; } g_cache = { g_cacheVtbl, nullptr };
+    struct VCache { void** vt; void* com; void* node; };
+    VCache g_cache = { g_cacheVtbl, (void*)0x4D575443 /* unique tag, compared only */, nullptr };
+    bool g_cacheListed = false;
+    void ListOurCache() {
+        if (g_cacheListed) return;
+        __try { ((void(__thiscall*)(void*))0x425300)((char*)&g_cache + 8); g_cacheListed = true; LOG("Vehicle cache: registered with the game"); }
+        __except (EXCEPTION_EXECUTE_HANDLER) { LOG("Vehicle cache: registering failed"); }
+    }
+
+    int __fastcall Cache_OnQuery(void*, void*, void* iv, void* /*asking*/) {
+        return (iv && iv == g_ghost) ? 0 /*want*/ : 1 /*don't care*/;
+    }
 
     uint32_t VehicleKey(void* iv) {
         using Fn = uint32_t(__thiscall*)(void*);
@@ -760,6 +782,7 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
 }
 
 bool Game::InstallVehicleFactoryHook() {
+    ListOurCache();
     g_onCarRemoved = [](void* iv) {
         if (iv == g_ghost) { g_ghost = nullptr; g_ghostKind = GK_NONE; g_spawnedKey = g_spawnedHash = 0; }
     };

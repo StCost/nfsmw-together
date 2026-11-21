@@ -119,7 +119,7 @@ namespace {
     void RemoveMirror(Mirror& m) {
         if (m.racer) { if (m.iv) RestoreAI(m.iv); }          // our own racer: give it its AI back
         else if (m.bound) {}                                  // our own traffic car: it just drives on
-        else if (m.iv && ListContains(-1, m.iv)) KillVehicle(m.iv);
+        else if (m.iv && !WasRemovedByGame(m.iv) && ListContains(-1, m.iv)) KillVehicle(m.iv);   // never kill a car the game built in its place
         m = Mirror{};
     }
 
@@ -282,7 +282,7 @@ static int MaintainMirrors(double now) {
         // the owner keeps sending, just not this car: it's gone there. (If the owner sends nothing at all,
         // its game is paused - alt-tab, map, loading: keep every mirror frozen where it is.)
         if (g_lastTrafficPkt - m.lastSeen > 1500) { RemoveMirror(m); continue; }
-        if (m.iv && !ListContains(-1, m.iv)) { m.iv = nullptr; m.bound = false; }   // the game removed it
+        if (m.iv && (WasRemovedByGame(m.iv) || !ListContains(-1, m.iv))) { m.iv = nullptr; m.bound = false; }   // the game removed it (its address may hold another car now)
         if (IsRaceTrafficMirror(m)) {
             // one of our own traffic cars follows the host's car (bound above): never spawn or kill here
             if (m.iv && !NisActive()) {
