@@ -22,7 +22,7 @@ Wanted online free roam with a friend, Need for Speed Most Wanted two player mod
    you connect by yourselves.
 4. Updating: unpack the new zip over the old one. Your nickname and settings (`scripts\MWTogether.ini`) are kept; the zip only brings `MWTogether.default.ini` for new installs.
 
-The prologue (the opening races in the BMW) can be played together too: start a new career on both PCs. Each game runs its own prologue, and whoever is ahead waits on the grid of the next race until the other one is there (`[Coop] Prologue`). Co-op needs both players in the same part of the career: both in the prologue, or both past it.
+The prologue (the opening races in the BMW) can be played together too: start a new career on both PCs. Each game runs its own prologue, and whoever is ahead waits on the grid of the next race until the other one is there (`[Coop] Prologue`). Co-op needs both players in the same part of the career: both in the prologue, or both past it. (?) Built and tested on one PC, not yet played together on two.
 
 Don't want to replay the prologue? [Releases](https://github.com/StCost/nfsmw-together/releases/latest) also have a **StarterSave** zip: a fresh career saved at the end of the prologue: you drive
 the last short scripted race, then go to the car lot and pick your first car. Unpack it into `Documents` (it holds the `NFS Most Wanted` folder; back up
