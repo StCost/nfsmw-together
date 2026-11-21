@@ -54,6 +54,66 @@ namespace NetUtil {
         return best >= 0 ? best : (anyModel ? bestAny : -1);
     }
 
+    // ---- smooth traffic handover (client, free roam) ------------------------------------------
+    // When the client comes near the host, the host's cars may only appear where the player can't see
+    // it happen, and the client's own cars only go once they are off screen. The camera is a view
+    // cone in game coordinates (y up); `valid` false = the camera is unknown (then pos is the player).
+    struct CamView { float pos[3]; float dir[3]; bool valid; };
+    constexpr float HANDOVER_VIEW_COS   = 0.342f;  // cos 70 deg: the cone counted as "in view" (wider than the game's FOV)
+    constexpr float HANDOVER_FAR_M      = 180.f;   // farther from the camera than this a car may appear even in view
+    constexpr float HANDOVER_NEAR_M     = 30.f;    // never appear closer to the player than this (look-back, mirror)
+    constexpr float HANDOVER_CAR_M      = 3.5f;    // a car's radius: a car half inside the cone is in view
+    constexpr float HANDOVER_OVERLAP_M  = 6.f;     // two cars closer than this would sit inside each other
+    constexpr float HANDOVER_GONE_M     = 500.f;   // beyond this our own car may go even if (a few pixels) on screen
+    constexpr float HANDOVER_OFFSCREEN_S = 0.3f;   // off screen at least this long before a car is removed
+
+    inline float Dist3(const float* a, const float* b) {
+        float dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+        return sqrtf(dx * dx + dy * dy + dz * dz);
+    }
+    // Could the camera see a car at p? Only within farM; an unknown camera sees everything within farM.
+    inline bool InCameraView(const CamView& c, const float* p, float farM) {
+        float d[3] = { p[0] - c.pos[0], p[1] - c.pos[1], p[2] - c.pos[2] };
+        float dist = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (!(dist == dist)) return true;                       // NaN: assume seen
+        if (dist > farM) return false;
+        if (!c.valid || dist <= HANDOVER_CAR_M) return true;
+        float dl = sqrtf(c.dir[0] * c.dir[0] + c.dir[1] * c.dir[1] + c.dir[2] * c.dir[2]);
+        if (!(dl > 1e-3f)) return true;                         // no direction: assume seen
+        float cosA = (d[0] * c.dir[0] + d[1] * c.dir[1] + d[2] * c.dir[2]) / (dist * dl);
+        cosA = cosA > 1.f ? 1.f : cosA < -1.f ? -1.f : cosA;
+        float margin = asinf(HANDOVER_CAR_M / dist);           // the car's own size widens the cone
+        return acosf(cosA) <= acosf(HANDOVER_VIEW_COS) + margin;
+    }
+    // May a host car be created at p now without the player seeing it pop in: not right next to the
+    // player, and outside the camera's view or far away.
+    inline bool MaySpawnUnseen(const CamView& c, const float* p, const float* player) {
+        if (player && !(Dist3(p, player) >= HANDOVER_NEAR_M)) return false;   // (NaN too)
+        return !InCameraView(c, p, HANDOVER_FAR_M);
+    }
+    // May one of the client's own traffic cars be removed? The game's per-car screen timers
+    // (IVehicle::GetOnScreenTime / GetOffScreenTime): never while on screen, only once it has been off
+    // screen for a moment (both timers 0 = not drawn at all), or when it is far beyond drawing range.
+    inline bool OwnCarMayGo(float onScreenS, float offScreenS, float distToCamM) {
+        if (distToCamM >= HANDOVER_GONE_M) return true;
+        if (!(onScreenS <= 0.f)) return false;                  // on screen (or garbage): keep
+        return offScreenS <= 0.f || offScreenS >= HANDOVER_OFFSCREEN_S;
+    }
+    // A host car whose spot is in view can take over one of our own cars instead: one of the same model
+    // within sameM, else any model within anyM (the car jumps that far: keep it short). -1 if none.
+    inline int PickTakeoverPartner(uint32_t model, const float* pos, const TrafficCandidate* c, int n, float sameM, float anyM) {
+        int best = -1, bestAny = -1;
+        float bestD = 0, bestAnyD = 0;
+        for (int i = 0; i < n; ++i) {
+            if (c[i].skip) continue;
+            float d = Dist3(c[i].pos, pos);
+            if (!(d == d)) continue;
+            if (c[i].model == model && d <= sameM && (best < 0 || d < bestD)) { best = i; bestD = d; }
+            if (d <= anyM && (bestAny < 0 || d < bestAnyD)) { bestAny = i; bestAnyD = d; }
+        }
+        return best >= 0 ? best : bestAny;
+    }
+
     // ---- interpolation math -----------------------------------------------------------------
     inline void Lerp3(const float* a, const float* b, float t, float* o) {
         for (int i = 0; i < 3; ++i) o[i] = a[i] + (b[i] - a[i]) * t;

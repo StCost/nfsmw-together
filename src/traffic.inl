@@ -8,6 +8,10 @@
 //  In a race the client keeps its own traffic (race scripts own some of it). With [Traffic]
 //  SharedInRaces=1 its own traffic cars are bound to the host's cars and moved like mirrors instead
 //  (nothing spawned, deleted or AI-disabled); with 0 each player sees their own traffic in races.
+//  [Traffic] SmoothHandover=1 (client, free roam): leaving the host, each host-car copy becomes one of
+//  our own traffic cars (traffic AI, adopted by the game's traffic manager) instead of vanishing.
+//  Coming near, our own traffic cars stay until they are off screen, and a host car only appears where
+//  the camera can't see it (or one of our cars in / near its spot takes it over and glides there).
 // ---------------------------------------------------------------------------
 namespace {
     constexpr uintptr_t DensityCallSite  = 0x439BBD;   // call AITrafficManager::ComputeDensity (0x41EC20)
@@ -54,6 +58,12 @@ namespace {
         bool     bound = false; // in a race: iv is one of OUR OWN traffic cars following the host's car
                                 // (never killed, its AI is left alone: unbinding just lets it drive on)
         char     name[31] = {};  // its display name on the host (race opponents)
+        // free roam (SmoothHandover): one of our own cars took this host car over and glides from where
+        // it was to the host car's place instead of jumping there
+        bool     blendPending = false; // start the glide at the next drive (from where the car is then)
+        DWORD    blendT0 = 0;    // GetTickCount when the glide started (0 = none)
+        float    blendOff[3] = {};
+        float    blendRot[4] = {};
     };
     Mirror g_mirrors[48];
     bool   g_trafficNear = false;
@@ -154,6 +164,24 @@ namespace {
             for (int i = 0; i < 3; ++i) { pos[i] = n.e.pos[i] + n.e.linVel[i] * ex; vel[i] = stale ? 0.f : n.e.linVel[i]; av[i] = stale ? 0.f : n.e.angVel[i]; }
             q = *(const Quat*)n.e.rot;
         }
+        if (m.blendPending) {   // start the glide from where the car is right now
+            m.blendPending = false;
+            const float* cp = RB_GetVec(rb, RB_GetPosition);
+            for (int i = 0; i < 3; ++i) m.blendOff[i] = cp[i] - pos[i];
+            memcpy(m.blendRot, RB_GetVec(rb, RB_GetOrientation), 16);
+            m.blendT0 = GetTickCount() | 1;
+        }
+        if (m.blendT0) {   // a car of ours that took this host car over: glide into its place
+            constexpr DWORD BlendMs = 1500;
+            DWORD el = GetTickCount() - m.blendT0;
+            if (el >= BlendMs) m.blendT0 = 0;
+            else {
+                float k = 1.f - (float)el / BlendMs;          // 1 -> 0: how much of the old offset is left
+                k = k * k * (3.f - 2.f * k);
+                for (int i = 0; i < 3; ++i) pos[i] += m.blendOff[i] * k;
+                q = Nlerp(q, *(const Quat*)m.blendRot, k);
+            }
+        }
         RB_SetVec(rb, RB_SetOrientationQuat, &q);
         RB_SetVec(rb, RB_SetPosition, pos);
         RB_SetVec(rb, RB_SetLinearVelocity, vel);
@@ -182,6 +210,120 @@ namespace {
         if (nm && nm[0] && nm[0] != '?') return ((HashFn)0x4519D0)(nm);
         return VehicleKey(iv);
     }
+
+    // ---- smooth handover (client, free roam, [Traffic] SmoothHandover) -------------------------
+    bool SmoothHandover() { return !g_cfg.isHost && g_cfg.trafficSmoothHandover; }
+
+    // The player's camera in game coordinates. eViews[EVIEW_PLAYER1] = 0x9195E0 + 0x70: Active byte +8
+    // (0x919658), Camera* +0x40 (0x919690). Camera::CurrentKey Position +0x40 / Direction +0x50 are in
+    // render space; the game's own GetCameraPosition (0x40B0D0) / GetCameraDirection (0x40B140) read the
+    // same fields and swizzle them to game space as (-r.y, r.z, r.x). Unknown camera: valid = false and
+    // pos = the fallback (the player).
+    NetUtil::CamView ReadCamera(const float* fallbackPos) {
+        NetUtil::CamView c{};
+        uint8_t active = 0; uintptr_t cam = 0;
+        float p[3], d[3];
+        if (Mem::Read(0x919658, active) && active && Mem::Read(0x919690, cam) && cam &&
+            Mem::SafeRead((void*)(cam + 0x40), p, 12) && Mem::SafeRead((void*)(cam + 0x50), d, 12) &&
+            NetUtil::FiniteWithin(p, 3, NetUtil::MAX_POS) && NetUtil::FiniteWithin(d, 3, 100.f)) {
+            c.pos[0] = -p[1]; c.pos[1] = p[2]; c.pos[2] = p[0];
+            c.dir[0] = -d[1]; c.dir[1] = d[2]; c.dir[2] = d[0];
+            c.valid = true;
+        } else if (fallbackPos) memcpy(c.pos, fallbackPos, 12);
+        return c;
+    }
+
+    // The game's per-car screen timers, updated every frame by PVehicle (0x686060: +0x180 / +0x184,
+    // from its render connection's "visible" flag; both 0 when it isn't drawn at all).
+    // (Not a vehicle: counts as on screen / inactive / loading, so nothing is done to it.)
+    float OnScreenS(void* iv)  { return IsVehicle(iv) ? VCall<float(__thiscall*)(void*)>(iv, 25)(iv) : 1.f; }   // IVehicle::GetOnScreenTime
+    float OffScreenS(void* iv) { return IsVehicle(iv) ? VCall<float(__thiscall*)(void*)>(iv, 24)(iv) : 0.f; }   // IVehicle::GetOffScreenTime
+    bool  IsActiveCar(void* iv) { return IsVehicle(iv) && VCall<bool(__thiscall*)(void*)>(iv, 34)(iv); }        // IVehicle::IsActive
+    bool  IsLoadingCar(void* iv) { return !IsVehicle(iv) || VCall<bool(__thiscall*)(void*)>(iv, IV_IsLoading)(iv); }
+    bool  OnScreen(void* iv) { float s = OnScreenS(iv); return !(s <= 0.f); }
+
+    // AITrafficManager: its constructor (0x4418D0) stores the object + 0x48 in 0x92C674. Object vtable
+    // 0x89221C; IAttachable at +0x2C (vtable 0x892200, slot 2 = Attach(IUnknown*) -> 0x402900 ->
+    // 0x6FBF80). Its OnAttached (0x4399C0) adds an attached vehicle to its car list (+0x90); its update
+    // (0x439BB0) un-spawns a listed car once 0x410B00 says it isn't needed (off screen longer than, and
+    // farther than, its density tables allow) and re-uses such cars for new traffic (0x426380) - the
+    // same Attach call it makes for every traffic car it builds (0x4264BB).
+    void* TrafficMgrAttachable() {
+        uintptr_t p = 0, vt = 0, vt2 = 0;
+        if (!Mem::Read(0x92C674, p) || p < 0x48) return nullptr;
+        uintptr_t mgr = p - 0x48;
+        if (!Mem::Read(mgr, vt) || vt != 0x89221C || !Mem::Read(mgr + 0x2C, vt2) || vt2 != 0x892200) return nullptr;
+        return (void*)(mgr + 0x2C);
+    }
+
+    // Turn one of our spawned host-car copies into a normal traffic car of ours that keeps its motion.
+    // IVehicle::SetDriverClass (slot 21, 0x6876E0) stores the class, re-lists the car (0x67ECA0: traffic
+    // = the AI + AI-traffic lists) and reloads its behaviours (0x6863B0 -> 0x685240), which picks the AI
+    // by driver class (table 0x8F8890, read at 0x67F383: traffic -> "AIVehicleTraffic", none ->
+    // "AIVehicleEmpty"). Then the traffic manager adopts it and its AI looks for its lane.
+    enum { HAND_FAILED, HAND_AI, HAND_AI_MANAGED };
+    int HandToTrafficAI(void* iv) {
+        if (!IsVehicle(iv) || IsLoadingCar(iv)) return HAND_FAILED;
+        void* rb = RigidBodyOf(iv);
+        if (!rb) return HAND_FAILED;
+        float pos[3], q[4], v[3], w[3];
+        memcpy(pos, RB_GetVec(rb, RB_GetPosition), 12);
+        memcpy(q, RB_GetVec(rb, RB_GetOrientation), 16);
+        memcpy(v, RB_GetVec(rb, RB_GetLinearVelocity), 12);
+        memcpy(w, RB_GetVec(rb, RB_GetAngularVelocity), 12);
+        if (DriverClass(iv) != DRV_TRAFFIC)
+            VCall<void(__thiscall*)(void*, int)>(iv, IV_SetDriverClass)(iv, DRV_TRAFFIC);
+        if (DriverClass(iv) != DRV_TRAFFIC) return HAND_FAILED;
+        if ((rb = RigidBodyOf(iv)) != nullptr) {      // the behaviour reload must not stop or move it
+            RB_SetVec(rb, RB_SetOrientationQuat, q);
+            RB_SetVec(rb, RB_SetPosition, pos);
+            RB_SetVec(rb, RB_SetLinearVelocity, v);
+            RB_SetVec(rb, RB_SetAngularVelocity, w);
+        }
+        bool managed = false;
+        if (void* att = TrafficMgrAttachable()) {
+            void* sim = VCall<void* (__thiscall*)(void*)>(iv, IV_GetSimable)(iv);
+            if (sim) managed = VCall<bool(__thiscall*)(void*, void*)>(att, 2)(att, sim);
+        }
+        if (void* ai = VCall<void* (__thiscall*)(void*)>(iv, 0xAC / 4)(iv))     // GetAIVehiclePtr
+            VCall<void(__thiscall*)(void*, int)>(ai, 0x50 / 4)(ai, 1);         // ResetDriveToNav(current lane)
+        if (managed) ForgetCar(iv);   // the game's own now: it culls and re-uses it like any traffic car
+        return managed ? HAND_AI_MANAGED : HAND_AI;
+    }
+
+    // Cars we let go of that we still remove ourselves once nobody sees them: copies that couldn't get
+    // the traffic AI (they coast on: removed as soon as they are off screen) and traffic cars the
+    // traffic manager didn't adopt (removed the way the game culls traffic: off screen for a while and
+    // not close, or very far away). They stay in our vehicle cache so we hear if the game deletes one.
+    struct RetiredCar { void* iv; bool ai; };
+    RetiredCar g_retired[32] = {};
+    bool IsRetired(void* iv) { for (auto& r : g_retired) if (r.iv && r.iv == iv) return true; return false; }
+    void Retire(void* iv, bool ai) {
+        if (!iv || IsRetired(iv)) return;
+        for (auto& r : g_retired) if (!r.iv) { r.iv = iv; r.ai = ai; return; }
+        if (!ai) KillVehicle(iv);    // no room to track it (never seen in practice): the old behaviour
+    }
+    int TickRetired(const NetUtil::CamView& cam) {
+        int removed = 0;
+        for (auto& r : g_retired) {
+            if (!r.iv) continue;
+            if (WasRemovedByGame(r.iv) || !IsKeptCar(r.iv) || !ListContains(-1, r.iv)) { r.iv = nullptr; continue; }
+            void* rb = RigidBodyOf(r.iv);
+            if (!rb) { r.iv = nullptr; continue; }
+            float d = Dist(RB_GetVec(rb, RB_GetPosition), cam.pos);
+            float on = OnScreenS(r.iv), off = OffScreenS(r.iv);
+            bool go = r.ai ? (d >= NetUtil::HANDOVER_GONE_M || (on <= 0.f && off >= 3.f && d >= 120.f))
+                           : NetUtil::OwnCarMayGo(on, off, d);
+            if (go) { KillVehicle(r.iv); r.iv = nullptr; ++removed; }
+        }
+        return removed;
+    }
+    void ForgetRetired() { for (auto& r : g_retired) r.iv = nullptr; }   // the world is gone
+
+    int g_handoverLogs = 0;   // per-car handover lines logged since the last switch (only the first few)
+    int g_hoWaiting = 0;      // host cars waiting for a spot out of view (last MaintainMirrors)
+    int g_hoKeptOnExpiry = 0; // host cars the host stopped sending that stayed here because they were on screen
+    int g_hoRetiredGone = 0;  // let-go cars we removed once they were out of view
 }
 
 static void OnCarHitImpl(uint16_t id, const float* dv);
@@ -267,6 +409,102 @@ static void BindRaceTraffic() {
     }
 }
 
+// ---- smooth handover (client, free roam) ----------------------------------------------------------
+// A host car copy we no longer need. With keepUnseen false only a car on screen is kept (an unseen one
+// is removed right away as before). A kept traffic car drives on as our own traffic car (traffic AI);
+// a cop, or a car that can't get the AI, coasts on and is removed once it is off screen.
+static void LetGoOfMirror(Mirror& m, bool keepUnseen, int& handed, int& managed, int& coasting) {
+    if (m.racer || m.bound || !m.iv || WasRemovedByGame(m.iv) || !ListContains(-1, m.iv) ||
+        (!keepUnseen && !OnScreen(m.iv))) { RemoveMirror(m); return; }
+    void* iv = m.iv;
+    bool cop = m.n && (m.s[m.n - 1].e.flags & 1);
+    int r = cop ? HAND_FAILED : HandToTrafficAI(iv);
+    if (r == HAND_FAILED) { Retire(iv, false); ++coasting; }
+    else {
+        ++handed;
+        if (r == HAND_AI_MANAGED) ++managed; else Retire(iv, true);
+        if (g_handoverLogs < 8) {
+            ++g_handoverLogs;
+            LOG("Traffic: the host's car %u (%s) drives on as our own traffic car %p (%s)", (unsigned)m.id, VehName(iv), iv,
+                r == HAND_AI_MANAGED ? "traffic AI, the game culls it" : "traffic AI, we remove it once out of view");
+        }
+    }
+    m = Mirror{};
+}
+
+// Leaving the host's traffic (or the host went away): none of the host's cars around us vanish.
+static void ReleaseHostTraffic(const char* why) {
+    int handed = 0, managed = 0, coasting = 0, freed = 0;
+    for (auto& m : g_mirrors) {
+        if (!m.used || m.racer) continue;
+        if (m.bound) { ++freed; RemoveMirror(m); continue; }     // our own car: it just drives on
+        LetGoOfMirror(m, true, handed, managed, coasting);
+    }
+    if (handed || coasting || freed)
+        LOG("Traffic: %s - %d of the host's cars drive on as our traffic (%d taken over by the game's traffic manager), "
+            "%d coast on until out of view, %d of our own cars stop following the host's", why, handed, managed, coasting, freed);
+}
+
+// Our own traffic cars a host car may take over (like BindRaceTraffic): not ours to keep, active,
+// not already following a host car, not touching a player. Cars we handed over earlier count too.
+struct OwnTraffic { void* car[64]; NetUtil::TrafficCandidate c[64]; int n; bool built; };
+static void CollectOwnTraffic(OwnTraffic& o, const float* lp, const float* gp) {
+    o.n = 0; o.built = true;
+    void* me = LocalVehicle();
+    void** b = nullptr;
+    int cnt = ListSize(VL_AITRAFFIC, &b);
+    for (int i = 0; i < cnt && o.n < 64; ++i) {
+        void* t = ListGet(VL_AITRAFFIC, i);
+        if (!t || t == g_ghost || t == me || !IsVehicle(t) || IsMirrorCar(t) || !IsActiveCar(t)) continue;
+        if (IsKeptCar(t) && !IsRetired(t)) continue;
+        void* rb = RigidBodyOf(t);
+        if (!rb) continue;
+        o.car[o.n] = t;
+        o.c[o.n].model = ModelKeyOf(t);
+        memcpy(o.c[o.n].pos, RB_GetVec(rb, RB_GetPosition), 12);
+        o.c[o.n].skip = (lp && Dist(lp, o.c[o.n].pos) < 6.f) || (gp && Dist(gp, o.c[o.n].pos) < 6.f);
+        ++o.n;
+    }
+}
+static bool AnyCarNear(const float* pos, float r) {
+    void** b = nullptr;
+    int cnt = ListSize(VL_ALL, &b);
+    for (int i = 0; i < cnt; ++i) {
+        void* t = ListGet(VL_ALL, i);
+        void* rb = RigidBodyOf(t);
+        if (rb && Dist(RB_GetVec(rb, RB_GetPosition), pos) < r) return true;
+    }
+    return false;
+}
+
+// A host traffic car without a car here: true = create it now (its spot is out of view or far, and
+// free). Otherwise one of our own cars may become it: the one already sitting in its spot, or (spot in
+// view) a nearby one, which then glides into place. Else it waits until its spot is out of view.
+static bool PlaceHostCar(Mirror& m, const NetUtil::CamView& cam, const float* lp, const float* gp, OwnTraffic& own) {
+    const TrafficEntry& e = m.s[m.n - 1].e;
+    if (!own.built) CollectOwnTraffic(own, lp, gp);
+    int k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, NetUtil::HANDOVER_OVERLAP_M, NetUtil::HANDOVER_OVERLAP_M);
+    const char* how = "in its spot";
+    if (k < 0) {
+        if (NetUtil::MaySpawnUnseen(cam, e.pos, lp)) return !AnyCarNear(e.pos, NetUtil::HANDOVER_OVERLAP_M);
+        k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, 25.f, 10.f);
+        how = "nearby, in view";
+        if (k < 0) return false;
+    }
+    void* car = own.car[k];
+    own.c[k].skip = true;
+    for (auto& r : g_retired) if (r.iv == car) { r.iv = nullptr; ForgetCar(car); }   // one we handed over earlier
+    m.iv = car;
+    m.bound = true;
+    m.blendPending = true;
+    if (g_handoverLogs < 16) {
+        ++g_handoverLogs;
+        LOG("Traffic: our traffic car %p (%s, %s) now shows the host's car %u (%s model, %.0f m away)", car, VehName(car), how,
+            (unsigned)m.id, own.c[k].model == m.model ? "same" : "other", Dist(own.c[k].pos, e.pos));
+    }
+    return false;
+}
+
 // Spawn / drive / expire the mirror cars (both sides: the client mirrors the host's traffic and
 // cops, the host mirrors the client's own pursuit cops).
 static int MaintainMirrors(double now) {
@@ -280,12 +518,31 @@ static int MaintainMirrors(double now) {
     // The other player's own car comes first: no mirror spawns until it exists, and when its spawn
     // failed (vehicle budget full) give back a couple of mirror cars.
     bool mayspawn = g_ghost && !g_ghostStarved;
+    // SmoothHandover (client, free roam, near the host): host cars appear only where it can't be seen
+    bool smooth = SmoothHandover() && !g_clientRacing && g_trafficNear;
+    NetUtil::CamView cam{};
+    float lpos[3] = {}, gpos[3] = {};
+    const float* lp = nullptr; const float* gp = nullptr;
+    OwnTraffic own; own.n = 0; own.built = false;
+    if (smooth) {
+        if (void* lrb = RigidBodyOf(LocalVehicle())) { memcpy(lpos, RB_GetVec(lrb, RB_GetPosition), 12); lp = lpos; }
+        if (void* grb = RigidBodyOf(g_ghost)) { memcpy(gpos, RB_GetVec(grb, RB_GetPosition), 12); gp = gpos; }
+        cam = ReadCamera(lp);
+    }
+    g_hoWaiting = 0;
     for (auto& m : g_mirrors) {
         if (!m.used) continue;
         // the owner keeps sending, just not this car: it's gone there. (If the owner sends nothing at all,
         // its game is paused - alt-tab, map, loading: keep every mirror frozen where it is.)
-        if (g_lastTrafficPkt - m.lastSeen > 1500) { RemoveMirror(m); continue; }
+        // SmoothHandover: a car still on screen here drives on as our own traffic instead of vanishing.
+        if (g_lastTrafficPkt - m.lastSeen > 1500) {
+            if (smooth && !m.racer && !m.bound && m.iv) { int h = 0, mg = 0, co = 0; LetGoOfMirror(m, false, h, mg, co); g_hoKeptOnExpiry += h + co; }
+            else RemoveMirror(m);
+            continue;
+        }
         if (m.iv && !ListContains(-1, m.iv)) { m.iv = nullptr; m.bound = false; }   // the game removed it
+        // free roam: our own car that showed this host car was un-spawned by the traffic manager (or is gone)
+        if (m.bound && m.iv && !SharedRaceTraffic() && (!ListContainsOne(VL_AITRAFFIC, m.iv) || m.iv == LocalVehicle() || !IsActiveCar(m.iv))) { m.iv = nullptr; m.bound = false; }
         if (IsRaceTrafficMirror(m)) {
             // one of our own traffic cars follows the host's car (bound above): never spawn or kill here
             if (m.iv && !NisActive()) {
@@ -328,6 +585,8 @@ static int MaintainMirrors(double now) {
             void* grb = RigidBodyOf(g_ghost);
             if ((lrb && Dist(RB_GetVec(lrb, RB_GetPosition), e.pos) < 6.f) ||
                 (grb && Dist(RB_GetVec(grb, RB_GetPosition), e.pos) < 6.f)) continue;
+            // SmoothHandover: only where the player can't see it pop in (or one of our cars becomes it)
+            if (smooth && !(e.flags & 1) && !PlaceHostCar(m, cam, lp, gp, own)) { if (!m.iv) ++g_hoWaiting; continue; }
             float dir[3] = { 1, 0, 0 };
             m.iv = SpawnVehicle(e.model, nullptr, e.pos, dir, g_cfg.trafficMirrorClass);
             ++spawned;
@@ -407,7 +666,11 @@ static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
         if (g_suppressTraffic) LOG("Traffic: released (not connected / not in game)");
         g_suppressTraffic = false;
         g_trafficNear = false;
+        bool inWorld = Game::GameFlowState() == 6 && myRb;
+        // still driving (only the host is gone / has no car): the host's cars around us stay and drive on
+        if (inWorld && SmoothHandover() && !g_clientRacing) ReleaseHostTraffic("the host's traffic is gone");
         for (auto& m : g_mirrors) if (m.used) RemoveMirror(m);
+        if (inWorld) TickRetired(ReadCamera(RB_GetVec(myRb, RB_GetPosition))); else ForgetRetired();
         g_mirrorCount = 0;
         return;
     }
@@ -455,16 +718,23 @@ static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
 
     // ---- client ----
     bool isNear = g_trafficNear ? distToPeer < 450.f : distToPeer < 350.f;
-    // not more than one switch every 15 s: each one removes and rebuilds all traffic around us
+    // not more than one switch every 15 s: each one removes and rebuilds all traffic around us (with
+    // SmoothHandover it hands cars over instead, but a quick back-and-forth still churns them)
     static double lastFlip = -1e9;
     if (lastFlip > now) lastFlip = -1e9;                         // the sim clock restarted (world reload)
     if (isNear != g_trafficNear && now - lastFlip < 15000) isNear = g_trafficNear;
     if (isNear != g_trafficNear) {
         lastFlip = now;
         g_trafficNear = isNear;
+        bool smoothNow = SmoothHandover() && !g_clientRacing;
         LOG("Traffic: %s the host (%.0f m) - %s", isNear ? "near" : "away from", distToPeer,
-            isNear ? "mirroring host traffic" : "using own traffic");
-        if (!isNear) for (auto& m : g_mirrors) if (m.used && !m.racer) RemoveMirror(m);
+            isNear ? (smoothNow ? "mirroring host traffic (our cars stay until out of view, host cars appear out of view)" : "mirroring host traffic")
+                   : (smoothNow ? "using own traffic (the host's cars around us drive on as ours)" : "using own traffic"));
+        g_handoverLogs = 0;
+        if (!isNear) {
+            if (smoothNow) ReleaseHostTraffic("left the host's traffic");
+            for (auto& m : g_mirrors) if (m.used && !m.racer) RemoveMirror(m);
+        }
     }
     {
         void* rs = nullptr; int mode = 0;
@@ -509,17 +779,28 @@ static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
         return;
     }
     g_suppressTraffic = isNear;   // no own traffic / patrol spawns near the host (pursuit spawns stay)
+    bool smooth = SmoothHandover();
+    NetUtil::CamView cam = smooth ? ReadCamera(myPos) : NetUtil::CamView{};
+    if (smooth) g_hoRetiredGone += TickRetired(cam);
     if (!isNear) { g_sentCount = 0; g_mirrorCount = MaintainMirrors(now); return; }   // race opponents only
 
     // remove our own (non-mirror) traffic cars, a few per frame. Our own cops stay: they belong to
-    // our pursuit and are sent to the host.
+    // our pursuit and are sent to the host. SmoothHandover: only cars that are off screen (the rest
+    // drive on until they leave the view; no new ones spawn here).
+    int ownInView = 0;
     if (!g_raceEndedTick || GetTickCount() - g_raceEndedTick > 8000) {
         int killed = 0;
         void** b = nullptr;
         int cnt = ListSize(VL_AITRAFFIC, &b);
         for (int i = cnt - 1; i >= 0 && killed < 3; --i) {
             void* t = ListGet(VL_AITRAFFIC, i);
-            if (t && t != g_ghost && !IsMirrorCar(t) && IsVehicle(t)) { KillVehicle(t); ++killed; ++g_killedOwn; }
+            if (!t || t == g_ghost || IsMirrorCar(t) || !IsVehicle(t)) continue;
+            if (smooth) {
+                void* rb = RigidBodyOf(t);
+                float d = rb ? Dist(RB_GetVec(rb, RB_GetPosition), cam.pos) : 0.f;
+                if (!NetUtil::OwnCarMayGo(OnScreenS(t), OffScreenS(t), d)) { ++ownInView; continue; }
+            }
+            KillVehicle(t); ++killed; ++g_killedOwn;
         }
     }
     if (sendNow) {
@@ -528,6 +809,19 @@ static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
         Net::SendTraffic(out, g_sentCount, Game::SimTimeSec());   // also when empty: tells the host our cops are gone
     }
     g_mirrorCount = MaintainMirrors(now);
+    if (smooth) {
+        // status whenever the numbers change (at most every 5 s)
+        int shownByOurs = 0;
+        for (auto& m : g_mirrors) if (m.used && m.bound && m.iv) ++shownByOurs;
+        static int lastInView = -1, lastWaiting = -1, lastOurs = -1;
+        static double nextLog = 0;
+        if (nextLog - now > 10000) nextLog = now;   // the sim clock restarted (world reload)
+        if ((ownInView != lastInView || g_hoWaiting != lastWaiting || shownByOurs != lastOurs) && now >= nextLog) {
+            lastInView = ownInView; lastWaiting = g_hoWaiting; lastOurs = shownByOurs; nextLog = now + 5000;
+            LOG("Traffic: handover - %d of our cars still in view, %d host cars waiting for a spot out of view, %d shown by our own cars, %d host cars kept on screen after the host dropped them, %d let-go cars removed out of view",
+                ownInView, g_hoWaiting, shownByOurs, g_hoKeptOnExpiry, g_hoRetiredGone);
+        }
+    }
 }
 
 // Hitting a car the OTHER game owns (their traffic, cops, race opponents shown here as mirrors): the
