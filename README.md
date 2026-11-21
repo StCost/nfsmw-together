@@ -20,6 +20,7 @@ Wanted online free roam with a friend, Need for Speed Most Wanted two player mod
    host's IP address) and press **PLAY**.
 3. Do the same on the other PC. The game skips the intro, loads your career into free roam and the two of
    you connect by yourselves.
+4. Updating: unpack the new zip over the old one. Your nickname and settings (`scripts\MWTogether.ini`) are kept; the zip only brings `MWTogether.default.ini` for new installs.
 
 ATTENTION: Both players must finish the career prologue (the opening races). Reach free roam to see and interact with other players.
 

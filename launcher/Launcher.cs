@@ -377,7 +377,9 @@ static class Program {
         Ini.Path = Path.Combine(scripts, "MWTogether.ini");
         if (!File.Exists(Ini.Path)) {
             string old = Path.Combine(scripts, "CoopMod.ini");
+            string def = Path.Combine(scripts, "MWTogether.default.ini");   // shipped instead of MWTogether.ini: updates keep your settings
             if (File.Exists(old)) File.Copy(old, Ini.Path);
+            else if (File.Exists(def)) File.Copy(def, Ini.Path);
             else if (!File.Exists(Path.Combine(scripts, "MWTogether.asi"))) {
                 MessageBox.Show("NFS MW Together isn't installed: scripts\\MWTogether.asi is missing.", "NFS MW Together");
                 return;

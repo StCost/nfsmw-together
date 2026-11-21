@@ -437,6 +437,9 @@ BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID) {
         // renamed from CoopMod: carry the old settings over once
         if (GetFileAttributesA(iniPath.c_str()) == INVALID_FILE_ATTRIBUTES)
             CopyFileA((std::string(g_dir) + "CoopMod.ini").c_str(), iniPath.c_str(), TRUE);
+        // first start: the release ships MWTogether.default.ini, so an update never overwrites your settings
+        if (GetFileAttributesA(iniPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+            CopyFileA((std::string(g_dir) + "MWTogether.default.ini").c_str(), iniPath.c_str(), TRUE);
         Log::Init(logPath.c_str());
         LOG("NFS MW Together %s loading (dir %s)", MWT_VERSION, g_dir);
 
