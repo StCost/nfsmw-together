@@ -610,6 +610,30 @@ namespace {
     // traffic car / cop, and builds the new one in the same memory. Unlisted, the other player's car was
     // deleted and our pointer then drove a cop or traffic car (seen as "his car turned into a taxi").
     void* g_keepCars[64] = {};                // every car we spawned (the other player's car, mirrors)
+    uint32_t g_keepWid[64] = {};              // their world ids: the same address may later hold another car
+    // a spot behind and a little to the left of a car, facing the same way (where a partner waits on a grid)
+    bool BehindLeftOf(void* rb, float out[3]) {
+        __try {
+            float f[3], r[3];
+            VCall<void(__thiscall*)(void*, float*)>(rb, 13 /*GetForwardVector*/)(rb, f);
+            VCall<void(__thiscall*)(void*, float*)>(rb, 14 /*GetRightVector*/)(rb, r);
+            const float* p = RB_GetVec(rb, RB_GetPosition);
+            for (int i = 0; i < 3; ++i) out[i] = p[i] - f[i] * 7.0f - r[i] * 2.5f;
+            out[1] += 0.3f;
+            return true;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+    uint32_t WorldIdOf(void* iv) {            // ISimable slot 28 (0x686AF0): unique per car, never reused
+        __try {
+            void* sim = VCall<void* (__thiscall*)(void*)>(iv, 1 /*IV_GetSimable*/)(iv);
+            return sim ? VCall<uint32_t(__thiscall*)(void*)>(sim, 28)(sim) : 0;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+    }
+    // false if this address now holds a different car than the one we spawned there
+    bool StillOurCar(void* iv) {
+        for (int i = 0; i < 64; ++i) if (g_keepCars[i] == iv) return !g_keepWid[i] || WorldIdOf(iv) == g_keepWid[i];
+        return true;
+    }
     void* g_removedCars[16] = {}; int g_removedNext = 0;   // ours the game deleted: the address may hold another car now
     void (*g_onCarRemoved)(void*) = nullptr;
     void (*g_onMirrorRemoved)(void*) = nullptr;     // traffic.inl: drop any mirror that used this car
@@ -617,7 +641,7 @@ namespace {
     bool IsKeptCar(void* iv) { for (void* k : g_keepCars) if (k && k == iv) return true; return false; }
     void KeepCar(void* iv) {
         for (void*& r : g_removedCars) if (r == iv) r = nullptr;     // this address is ours again
-        for (void*& k : g_keepCars) if (!k) { k = iv; return; }
+        for (int i = 0; i < 64; ++i) if (!g_keepCars[i]) { g_keepCars[i] = iv; g_keepWid[i] = WorldIdOf(iv); return; }
     }
     void ForgetCar(void* iv) { for (void*& k : g_keepCars) if (k == iv) k = nullptr; }
     bool WasRemovedByGame(void* iv) { if (!iv) return false; for (void* r : g_removedCars) if (r == iv) return true; return false; }
@@ -698,6 +722,7 @@ namespace {
     void KillVehicle(void* iv) {
         if (!iv) return;
         if (AlreadyKilled(iv)) { LOG("KillVehicle %p skipped - already destroyed", iv); return; }
+        if (!StillOurCar(iv)) { LOG("KillVehicle %p skipped - the game built another car there", iv); ForgetCar(iv); return; }
         ForgetCar(iv);
         if (!IsVehicle(iv)) return;
         using GetSim = void* (__thiscall*)(void*);
@@ -1015,6 +1040,13 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
 
     if (!enabled) { Game::ReleaseGhost(); RET("disabled (F9)"); }
     if (Game::GameFlowState() != 6) { g_ghost = nullptr; Game::ReleaseGhost(); for (auto& o : g_aiOv) o.iv = nullptr; RET("waiting (not in game)"); }
+    // The game may delete our copy of their car (to build a race car) and build another car in its memory:
+    // then the pointer is someone else's car (seen: the rival's GTI). Let go of it, never touch it again.
+    if (g_ghost && g_ghostKind == GK_SPAWNED && !StillOurCar(g_ghost)) {
+        LOG("Ghost: the game replaced our copy of their car with another car - letting go of it");
+        ForgetCar(g_ghost);
+        g_ghost = nullptr; g_ghostKind = GK_NONE; g_spawnedKey = g_spawnedHash = 0;
+    }
     // Drop the ghost if the game removed that car.
     if (g_ghost && !ListContains(g_ghostList, g_ghost)) {
         LOG("Ghost car left its vehicle list (despawned)");
@@ -1094,7 +1126,9 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
             // spawn protection: never create the car inside the local player (same spawn point / grid slot)
             float spawnPos[3] = { latest.s.pos[0], latest.s.pos[1], latest.s.pos[2] };
             if (void* lrb0 = RigidBodyOf(LocalVehicle())) {
-                if (Dist(RB_GetVec(lrb0, RB_GetPosition), spawnPos) < 4.f) { spawnPos[0] += -dir[2] * 5.f; spawnPos[2] += dir[0] * 5.f; spawnPos[1] += 0.5f; }
+                if (Dist(RB_GetVec(lrb0, RB_GetPosition), spawnPos) < 4.f) {   // on our spot: behind us, a little to the left
+                    if (!BehindLeftOf(lrb0, spawnPos)) { spawnPos[0] += -dir[2] * 5.f; spawnPos[2] += dir[0] * 5.f; spawnPos[1] += 0.5f; }
+                }
             }
             iv = SpawnVehicle(pc->carKey, pc->hasCustom ? pc->custom : nullptr, spawnPos, dir, DRV_REMOTE);
             if (!iv && pc->hasCustom) {
@@ -1209,9 +1243,13 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
             // each player sees the other blink and pass through, never themselves. Skipped during
             // cutscenes, because then the local car isn't human-driven and lrbP is null.
             // (no blinking: the user doesn't want it; collisions are off for the ghost during protection)
-            if (Dist(lp, cur) < 4.f) {
+            if (Dist(lp, cur) < 4.f) {   // standing in our car: put it behind us, a little to the left, facing our way
                 float aside[3] = { lp[0] + 5.f, lp[1] + 0.5f, lp[2] };
+                BehindLeftOf(lrbP, aside);
                 RB_SetVec(rb, RB_SetPosition, aside);
+                const float* q = RB_GetVec(lrbP, RB_GetOrientation);
+                float qq[4] = { q[0], q[1], q[2], q[3] };
+                VCall<void(__thiscall*)(void*, const float*)>(rb, RB_SetOrientationQuat)(rb, qq);
             }
             RB_SetVec(rb, RB_SetLinearVelocity, zero);
             RB_SetVec(rb, RB_SetAngularVelocity, zero);

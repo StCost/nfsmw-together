@@ -540,7 +540,7 @@ static int MaintainMirrors(double now) {
             else RemoveMirror(m);
             continue;
         }
-        if (m.iv && !ListContains(-1, m.iv)) { m.iv = nullptr; m.bound = false; }   // the game removed it
+        if (m.iv && (!ListContains(-1, m.iv) || (!m.bound && !StillOurCar(m.iv)))) { m.iv = nullptr; m.bound = false; }   // the game removed it (or built another car there)
         // free roam: our own car that showed this host car was un-spawned by the traffic manager (or is gone)
         if (m.bound && m.iv && !SharedRaceTraffic() && (!ListContainsOne(VL_AITRAFFIC, m.iv) || m.iv == LocalVehicle() || !IsActiveCar(m.iv))) { m.iv = nullptr; m.bound = false; }
         if (IsRaceTrafficMirror(m)) {
