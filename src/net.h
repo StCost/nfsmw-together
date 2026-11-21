@@ -26,6 +26,7 @@ enum PacketType : uint16_t {
     PKT_WEATHER = 20,   // host -> client: rain / cloud targets (older builds ignore it)   // PKT_CAR in 4 small pieces (some VPNs drop the 436-byte packet); older builds ignore it
     PKT_CARHIT  = 18,   // "my car hit YOUR traffic car / cop / racer <id> and lost this much velocity"
     PKT_HIT     = 17,   // "my car just lost this much velocity hitting yours" (momentum for the car that was hit)   // host -> client: "I keep no save for you"
+    PKT_FOLLOW  = 22,   // "I was moved to a Blacklist pursuit (milestone / bounty) here - come along" (older builds ignore it)
     PKT_MILESTONE = 21, // "I completed this milestone / speed trap" ([Career] SharedMilestones; older builds ignore it)
 };
 
@@ -112,6 +113,11 @@ struct CarInfo {
     uint8_t  custom[CUSTOM_RECORD_SIZE];
 };
 
+struct FollowPacket {
+    PacketHeader h;
+    uint32_t seq;
+    float pos[3], fwd[3], right[3], quat[4];
+};
 struct WeatherPacket {
     PacketHeader h;
     float rain, cloud;    // the host's rain model output (Rain::Update targets)
@@ -261,6 +267,8 @@ namespace Net {
     void SendNisSkip(uint32_t sceneHash);
     void SendCarHit(uint16_t id, const float* dv);
     extern void (*OnCarHit)(uint16_t id, const float* dv);
+    extern void (*OnFollow)(const float* pos, const float* fwd, const float* right, const float* quat);
+    void SendFollow(const float* pos, const float* fwd, const float* right, const float* quat);
     void SendHit(const float* dv);
     extern void (*OnHit)(const float* dv);
     // [Career] SharedMilestones: one completion (the game layer repeats it; copies share msgId)

@@ -145,7 +145,7 @@ namespace {
             if (ok) g_msApplied.Add(m.kind, m.key);
             LOG("Milestones: the other player's %s %08X (rival %u) %s here (state now %d)", MsKindName(m.kind), m.key, m.bin,
                 ok ? "completed" : "NOT completed", after);
-            if (ok) sprintf_s(g_msNotice, "%s - it counts for you too", m.kind == SM::KIND_MILESTONE ? "milestone" : "speed trap");
+            if (ok) sprintf_s(g_msNotice, "%s", m.kind == SM::KIND_MILESTONE ? "completed a milestone" : "passed a speed trap");
         }
     }
 }

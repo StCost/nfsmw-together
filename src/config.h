@@ -31,7 +31,8 @@ struct Config {
     bool        skipPursuitResults = false; // [UI] SkipPursuitResults - close the pursuit result screen in free roam
     bool        startInBackground = false; // [Window] StartInBackground - give focus back on start, game muted until clicked
     bool        restoreOnlyMissing = true; // [Career] RestoreOnlyMissing - the host restores our save only if it is gone
-    bool        syncWeather = true;      // [Coop] SyncWeather - the client shows the host's rain
+    bool        syncWeather = true;
+    bool        followToPursuits = true; // [Coop] FollowToPursuits - come along when the other player starts a Blacklist pursuit      // [Coop] SyncWeather - the client shows the host's rain
     bool        sharedPursuits = true;   // [Coop] SharedPursuits - shared heat, busted together, cooldown / escape together,
                                          // the other player's cops on the radar, ramming their cop starts a pursuit
     bool        noPursuitCams = true;    // [Coop] NoPursuitCams - no pursuit-start camera (look at the cop) while connected

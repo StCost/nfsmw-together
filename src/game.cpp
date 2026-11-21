@@ -882,6 +882,7 @@ bool Game::InstallVehicleFactoryHook() {
     InstallCatchUp();
     InstallNoSlowMotion();
     InstallWeatherSync();
+    InstallFollow();
     InstallMinimapHook();
     InstallWorldMapHook();
     InstallPursuitHooks();
@@ -951,6 +952,7 @@ void Game::SetDataDir(const char* dir) { strncpy_s(g_dataDir, dir, _TRUNCATE); }
 #include "save.inl"
 #include "coopwin.inl"
 #include "weather.inl"
+#include "follow.inl"
 #include "milestone.inl"
 
 void Game::ReleaseGhost() {

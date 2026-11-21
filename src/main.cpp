@@ -68,7 +68,7 @@ namespace {
         if (VirtualProtect(f, 5, PAGE_EXECUTE_READWRITE, &old)) { memcpy(f, jmp, 5); VirtualProtect(f, 5, old, &old); FlushInstructionCache(GetCurrentProcess(), f, 5); LOG("Crash dialog: plain error box installed"); }
     }
     void Toast(const std::string& s) {
-        bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron(s.c_str(), "NFS MW Together", "");
+        bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", s.c_str(), "");
         // only the game's own banner: where it can't show right now (loading, a menu), the notice waits
         // and appears as soon as it can (the newest one; dropped after 20 s)
         if (inGame) g_pendingNotice.clear(); else { g_pendingNotice = s; g_pendingAt = GetTickCount(); }
@@ -355,6 +355,7 @@ namespace {
         if (g_netOk && g_gameOk) Game::EventTick(linked);
         if (g_netOk && g_gameOk) Game::CoopRulesTick(linked);
         if (g_netOk && g_gameOk) Game::WeatherTick(linked);
+        if (g_netOk && g_gameOk) Game::FollowTick(linked);
         if (g_netOk && g_gameOk) Game::PauseRuleTick(linked);
         if (g_gameOk) Game::AutopilotTick();
         if (g_netOk && g_gameOk) Game::NisTick(linked);
@@ -403,10 +404,10 @@ namespace {
                 }
             }
         }
-        if (g_gameOk && Game::TakeCoopWinNotice()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " won - it counts as your win too");
+        if (g_gameOk && Game::TakeCoopWinNotice()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " won the race");
         if (g_gameOk) {
             std::string ms = Game::TakeMilestoneNotice();
-            if (!ms.empty()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " completed a " + ms);
+            if (!ms.empty()) Toast((st.peerName.empty() ? std::string("Your partner") : st.peerName) + " " + ms);
         }
         {   // connection problems the player should know about (shown once per message)
             static std::string lastErr;
@@ -433,7 +434,7 @@ namespace {
             if (GetTickCount() - g_pendingAt > 20000) g_pendingNotice.clear();
             else if (GetTickCount() >= nextTry) {
                 nextTry = GetTickCount() + 500;
-                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron(g_pendingNotice.c_str(), "NFS MW Together", "")) g_pendingNotice.clear();
+                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", g_pendingNotice.c_str(), "")) g_pendingNotice.clear();
             }
         }
         bool toastOn = false;   // the black corner box is gone

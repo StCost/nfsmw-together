@@ -40,7 +40,9 @@ namespace Game {
     void ChyronTick();                  // keeps our banner up for [UI] NoticeSeconds (every frame)
     bool CoopAllowed();
     bool InstallNoSlowMotion();
-    bool InstallWeatherSync();          // [Coop] SyncWeather: the client shows the host's rain
+    bool InstallWeatherSync();
+    void InstallFollow();               // [Coop] FollowToPursuits: come along to a Blacklist pursuit
+    void FollowTick(bool linked);          // [Coop] SyncWeather: the client shows the host's rain
     void WeatherTick(bool connected);         // [Coop] NoSlowMotion: everything in real time while connected                 // this profile may play co-op (career started, prologue done)
     void SetCoopLinked(bool linked);    // co-op features on/off this frame (connected and both allowed)
     uint8_t RaceStage();                // 0 none, 1 loading / intro, 2 on the grid

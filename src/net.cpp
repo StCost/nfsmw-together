@@ -306,6 +306,17 @@ namespace {
             HandleFilePacket(h->type, buf, len);
             break;
         }
+        case PKT_FOLLOW: {
+            if (len < (int)sizeof(FollowPacket)) return;
+            const FollowPacket* f = (const FollowPacket*)buf;
+            static uint32_t lastSeq = 0;
+            if (f->seq == lastSeq) return;
+            lastSeq = f->seq;
+            const float* all[4] = { f->pos, f->fwd, f->right, f->quat };
+            for (int k = 0; k < 4; ++k) for (int i = 0; i < (k == 3 ? 4 : 3); ++i) if (!std::isfinite(all[k][i]) || fabsf(all[k][i]) > 1e5f) return;
+            if (Net::OnFollow) Net::OnFollow(f->pos, f->fwd, f->right, f->quat);
+            break;
+        }
         case PKT_WEATHER: {
             if (len < (int)sizeof(WeatherPacket) || g_cfg.isHost) return;
             const WeatherPacket* w = (const WeatherPacket*)buf;
@@ -582,6 +593,17 @@ void Net::SendNisSkip(uint32_t sceneHash) {
     EventPacket p{};
     FillHeader(p.h, PKT_NISSKIP);
     p.eventHash = sceneHash;
+    for (int i = 0; i < 3; ++i) SendRaw(&p, sizeof(p));
+}
+
+void (*Net::OnFollow)(const float*, const float*, const float*, const float*) = nullptr;
+void Net::SendFollow(const float* pos, const float* fwd, const float* right, const float* quat) {
+    if (!g_stats.connected) return;
+    static uint32_t seq = 0;
+    FollowPacket p{};
+    FillHeader(p.h, PKT_FOLLOW);
+    p.seq = ++seq;
+    memcpy(p.pos, pos, 12); memcpy(p.fwd, fwd, 12); memcpy(p.right, right, 12); memcpy(p.quat, quat, 16);
     for (int i = 0; i < 3; ++i) SendRaw(&p, sizeof(p));
 }
 
