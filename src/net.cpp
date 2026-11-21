@@ -225,7 +225,7 @@ namespace {
             // Drop late / duplicate packets, but a big jump backwards means the peer restarted.
             if (h->seq <= g_lastStateSeq && g_lastStateSeq - h->seq < 300) return;
             g_lastStateSeq = h->seq;
-            {   // interpolation history
+            if (p->s.hasCar) {   // interpolation history (a "no car" state, e.g. their pause menu, has no position)
                 double recv = Net::LocalClockMs();
                 if (g_ringCount > 0) {
                     const TimedSnap& last = g_ring[(g_ringHead + 31) % 32];

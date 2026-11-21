@@ -896,7 +896,22 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
 
     if (!enabled) { Game::ReleaseGhost(); RET("disabled (F9)"); }
     if (Game::GameFlowState() != 6) { g_ghost = nullptr; Game::ReleaseGhost(); for (auto& o : g_aiOv) o.iv = nullptr; RET("waiting (not in game)"); }
-    if (!latest.valid || !latest.s.hasCar) { Game::ReleaseGhost(); RET("waiting (peer not driving)"); }
+    {   // their pause menu / a short gap reports "no car" while they're still in the world: keep the car
+        // standing where it was for a while instead of removing it and spawning it again (each new spawn
+        // can come out wrong, and it reappeared next to us)
+        static DWORD noCarSince = 0;
+        bool noCar = !latest.valid || !latest.s.hasCar;
+        if (!noCar) noCarSince = 0;
+        else {
+            if (!noCarSince) noCarSince = GetTickCount();
+            bool stillInWorld = latest.valid && latest.s.gameFlowState == 6;
+            if (g_ghost && stillInWorld && GetTickCount() - noCarSince < 120000) {
+                if (void* rb = RigidBodyOf(g_ghost)) { float z[3] = { 0, 0, 0 }; RB_SetVec(rb, RB_SetLinearVelocity, z); RB_SetVec(rb, RB_SetAngularVelocity, z); }
+                RET("paused there - car kept in place");
+            }
+            Game::ReleaseGhost(); RET("waiting (peer not driving)");
+        }
+    }
 
     // Drop the ghost if the game removed that car.
     if (g_ghost && !ListContains(g_ghostList, g_ghost)) {
