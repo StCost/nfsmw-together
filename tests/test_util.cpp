@@ -88,6 +88,101 @@ TEST(util_race_traffic_partner_edge_cases) {
     CHECK(used[2]);                                           // the third host car got the other model
 }
 
+// ---- smooth traffic handover ----
+static CamView Cam(float x, float y, float z, float dx, float dy, float dz, bool valid = true) {
+    CamView c{ { x, y, z }, { dx, dy, dz }, valid };
+    return c;
+}
+
+TEST(util_handover_camera_cone) {
+    CamView c = Cam(0, 0, 0, 0, 0, 1);                       // looking along +z (y is up)
+    const float ahead[3] = { 0, 0, 50 }, behind[3] = { 0, 0, -50 }, side[3] = { 50, 0, 0 };
+    const float ahead45[3] = { 40, 0, 40 }, back80[3] = { 50, 0, -9 }, farAhead[3] = { 0, 0, 400 };
+    CHECK(InCameraView(c, ahead, HANDOVER_FAR_M));
+    CHECK(InCameraView(c, ahead45, HANDOVER_FAR_M));          // inside the 70 degree half-cone
+    CHECK(!InCameraView(c, behind, HANDOVER_FAR_M));
+    CHECK(!InCameraView(c, side, HANDOVER_FAR_M));            // 90 degrees off: out of view
+    CHECK(!InCameraView(c, back80, HANDOVER_FAR_M));
+    CHECK(!InCameraView(c, farAhead, HANDOVER_FAR_M));        // straight ahead but beyond the far limit
+    // a car at the cone's edge still shows half of itself: its size widens the cone
+    const float edge[3] = { 10.f * sinf(71.f * 3.14159f / 180.f), 0, 10.f * cosf(71.f * 3.14159f / 180.f) };
+    CHECK(InCameraView(c, edge, HANDOVER_FAR_M));
+    const float edgeFar[3] = { 150.f * sinf(75.f * 3.14159f / 180.f), 0, 150.f * cosf(75.f * 3.14159f / 180.f) };
+    CHECK(!InCameraView(c, edgeFar, HANDOVER_FAR_M));
+    // a camera direction that isn't unit length works the same
+    CamView c2 = Cam(0, 0, 0, 0, 0, 7);
+    CHECK(InCameraView(c2, ahead, HANDOVER_FAR_M));
+    CHECK(!InCameraView(c2, behind, HANDOVER_FAR_M));
+    // right at the camera: seen
+    const float here[3] = { 1, 0, -1 };
+    CHECK(InCameraView(c, here, HANDOVER_FAR_M));
+}
+
+TEST(util_handover_camera_unknown_or_broken) {
+    const float behind[3] = { 0, 0, -50 }, farBehind[3] = { 0, 0, -300 };
+    CamView none = Cam(0, 0, 0, 0, 0, 1, false);              // unknown camera: everything near counts as seen
+    CHECK(InCameraView(none, behind, HANDOVER_FAR_M));
+    CHECK(!InCameraView(none, farBehind, HANDOVER_FAR_M));
+    CamView zeroDir = Cam(0, 0, 0, 0, 0, 0);
+    CHECK(InCameraView(zeroDir, behind, HANDOVER_FAR_M));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float bad[3] = { nan, 0, 0 };
+    CHECK(InCameraView(Cam(0, 0, 0, 0, 0, 1), bad, HANDOVER_FAR_M));   // NaN position: assume seen
+    CamView nanDir = Cam(0, 0, 0, nan, 0, 1);
+    CHECK(InCameraView(nanDir, behind, HANDOVER_FAR_M));
+}
+
+TEST(util_handover_may_spawn_unseen) {
+    CamView c = Cam(0, 2, -5, 0, 0, 1);                       // chase camera 5 m behind the player
+    const float player[3] = { 0, 0, 0 };
+    const float behind60[3] = { 0, 0, -60 }, behind20[3] = { 0, 0, -20 }, ahead60[3] = { 0, 0, 60 };
+    const float ahead250[3] = { 0, 0, 250 }, side40[3] = { 40, 0, 0 };
+    CHECK(MaySpawnUnseen(c, behind60, player));               // behind, not too close
+    CHECK(!MaySpawnUnseen(c, behind20, player));              // behind but too close (look-back / mirror)
+    CHECK(!MaySpawnUnseen(c, ahead60, player));               // right in front: wait
+    CHECK(MaySpawnUnseen(c, ahead250, player));               // in front but far away
+    CHECK(MaySpawnUnseen(c, side40, player));                 // beside the player, out of the cone
+    CHECK(MaySpawnUnseen(c, behind60, nullptr));
+    // unknown camera: only far from the player
+    CamView none = Cam(0, 0, 0, 0, 0, 0, false);
+    CHECK(!MaySpawnUnseen(none, behind60, player));
+    CHECK(MaySpawnUnseen(none, ahead250, player));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float bad[3] = { nan, nan, nan };
+    CHECK(!MaySpawnUnseen(c, bad, player));
+}
+
+TEST(util_handover_own_car_may_go) {
+    CHECK(!OwnCarMayGo(0.5f, 0.f, 50.f));                     // on screen: never
+    CHECK(!OwnCarMayGo(0.01f, 0.f, 300.f));
+    CHECK(OwnCarMayGo(0.f, 2.f, 20.f));                       // off screen for a while
+    CHECK(!OwnCarMayGo(0.f, 0.1f, 20.f));                     // just left the view: wait a moment
+    CHECK(OwnCarMayGo(0.f, 0.f, 20.f));                       // not drawn at all
+    CHECK(OwnCarMayGo(3.f, 0.f, 600.f));                      // far beyond drawing range
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    CHECK(!OwnCarMayGo(nan, 5.f, 20.f));                      // garbage timer: keep
+}
+
+TEST(util_handover_takeover_partner) {
+    const float at[3] = { 0, 0, 0 };
+    TrafficCandidate c[4] = {
+        { 0xA, {   5, 0, 0 }, false },   // other model, near
+        { 0xB, {  25, 0, 0 }, false },   // same model, within the same-model range
+        { 0xB, {  60, 0, 0 }, false },   // same model, too far to jump in view
+        { 0xA, {  15, 0, 0 }, false },   // other model, beyond the any-model range
+    };
+    CHECK_EQ(PickTakeoverPartner(0xB, at, c, 4, 30.f, 10.f), 1);   // same model first
+    CHECK_EQ(PickTakeoverPartner(0xC, at, c, 4, 30.f, 10.f), 0);   // else any model, only close
+    c[0].skip = true;
+    CHECK_EQ(PickTakeoverPartner(0xC, at, c, 4, 30.f, 10.f), -1);  // nothing close enough
+    c[1].skip = true;
+    CHECK_EQ(PickTakeoverPartner(0xB, at, c, 4, 30.f, 10.f), -1);  // the far one is never taken
+    CHECK_EQ(PickTakeoverPartner(0xB, at, nullptr, 0, 30.f, 10.f), -1);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    TrafficCandidate bad[1] = { { 0xB, { nan, 0, 0 }, false } };
+    CHECK_EQ(PickTakeoverPartner(0xB, at, bad, 1, 30.f, 10.f), -1);
+}
+
 TEST(util_hermite) {
     // endpoints
     CHECK_NEAR(Hermite(3, 7, 9, -2, 0.5f, 0.0f), 3, 1e-5);

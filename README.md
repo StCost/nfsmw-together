@@ -105,6 +105,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC (?)
 - [x] Pause menu and world map don't pause the time while you're connected
 - [x] No speedbreaker in co-op (slow motion can't work for two people)
+- [x] Smooth traffic handover: when you drive away from the other player, their traffic cars around you don't vanish - they drive on as your own traffic. When you come back, your own cars stay until they're out of sight and the other player's cars only appear where you can't see them pop in (behind you or far away), or one of your nearby cars quietly takes their place (`[Traffic] SmoothHandover`, 0 = the old instant switch) (?)
 - [x] Shared traffic inside races: the host's traffic cars are shown by the client's own traffic cars, so race scripts keep every car they own. Cars are in the same places on both screens, but may be a different model when no matching one is free (`[Traffic] SharedInRaces`, 0 = each player keeps their own traffic in races)
 
 
@@ -225,7 +226,7 @@ The code is in `src/`:
 |---|---|
 | `main.cpp` | frame loop, hotkeys, overlay text, start-up patches |
 | `net.*` | UDP protocol (hello, state, car info, traffic, events, roster, restart, keep-alive) |
-| `netutil.h` | pure helpers: interpolation maths, traffic ids, race traffic binding, name limits, validation of received numbers |
+| `netutil.h` | pure helpers: interpolation maths, traffic ids, race traffic binding, traffic handover rules (camera view, when a car may appear or go), name limits, validation of received numbers |
 | `game.cpp` | vehicles, spawning, the other player's car (ghost), race integration, autopilot |
 | `traffic.inl` | traffic, cop and race-opponent mirroring |
 | `event.inl` | shared event start, roster, co-op rules (speedbreaker, no pause, restart sync) |
