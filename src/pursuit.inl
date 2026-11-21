@@ -277,6 +277,15 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
     void* me = here ? LocalVehicle() : nullptr;
     void* pursuit = me ? PursuitOf(me) : nullptr;
 
+    // ---- the other player is chased: so are we, wherever we are (one shared pursuit) ----
+    if (me && !pursuit && peer.valid && (peer.s.pursuitFlags & PURSUIT_ACTIVE) && peer.s.gameFlowState == 6 && !peer.s.eventHash) {
+        static DWORD nextJoin = 0;
+        if ((int)(now - nextJoin) >= 0) {
+            nextJoin = now + 20000;   // if the game starts none (no cops around yet), try again later
+            bool ok = DebugForcePursuitImpl();
+            LOG("Pursuit: the other player is chased - %s", ok ? "starting the same pursuit on us" : "no cop manager, no pursuit");
+        }
+    }
     // ---- the other player's chasing cops spot us too: one of them close to our car starts a pursuit ----
     if (me && !pursuit) {
         static DWORD nextSpot = 0;
