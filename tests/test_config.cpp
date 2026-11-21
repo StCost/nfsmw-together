@@ -54,6 +54,7 @@ TEST(config_defaults_when_file_is_missing) {
     CHECK(c.gamepadHotplug); CHECK(c.keepPadBindings);
     CHECK_EQ(c.syncStoryScenes, 1);
     CHECK(c.sharedPursuits); CHECK(c.noPursuitCams);
+    CHECK(c.bossHelper); CHECK(!c.bossHelperSolo);
     CHECK(c.hideCursor);
     CHECK(!c.startInBackground);
     // debug options are all off unless asked for
@@ -69,13 +70,13 @@ TEST(config_parses_values) {
         "[Player]\r\nName=Kostya\r\n"
         "[Ghost]\r\nEnabled=0\r\nInterpDelayMs=150\r\nCollisions=0\r\nSafeDistance=25\r\n"
         "[Traffic]\r\nSync=0\r\nMirrorClass=6\r\nSharedInRaces=0\r\nSmoothHandover=0\r\nNoSpawnNearPlayers=0\r\n"
-        "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\nSharedPursuits=0\r\nNoPursuitCams=0\r\n"
+        "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\nSharedPursuits=0\r\nNoPursuitCams=0\r\nBossHelper=0\r\n"
         "[Start]\r\nSkipIntro=0\r\nDirectFreeRoam=0\r\nSkipLeaveSafeHouseDialog=0\r\n"
         "[AutoStart]\r\nEnabled=0\r\nTarget=race\r\nDelayMs=10\r\nIntervalMs=20\r\nSequence=ENTER,ENTER\r\n"
         "[UI]\r\nIntroInput=0\r\nMenuSpeed=3\r\nSkipPursuitResults=1\r\nNoticeSeconds=15\r\n"
         "[Input]\r\nGamepadHotplug=0\r\nKeepPadBindings=0\r\n"
         "[Window]\r\nHideCursor=0\r\nStartInBackground=1\r\n"
-        "[Debug]\r\nOverlay=1\r\nToggleKey=0x7A\r\nTestKeys=1\r\nAutoPilot=1\r\nPerf=1\r\nTestEvent=1.2.3\r\n");
+        "[Debug]\r\nOverlay=1\r\nToggleKey=0x7A\r\nTestKeys=1\r\nAutoPilot=1\r\nPerf=1\r\nTestEvent=1.2.3\r\nBossHelperSolo=1\r\n");
     CHECK(!c.isHost);
     CHECK_STR(c.peerIp, "192.168.1.20");
     CHECK_STR(c.clientIp, "192.168.1.21");
@@ -105,6 +106,7 @@ TEST(config_parses_values) {
     CHECK(!c.gamepadHotplug); CHECK(!c.keepPadBindings);
     CHECK_EQ(c.syncStoryScenes, 2);
     CHECK(!c.sharedPursuits); CHECK(!c.noPursuitCams);
+    CHECK(!c.bossHelper); CHECK(c.bossHelperSolo);
     CHECK(!c.hideCursor);
     CHECK(c.startInBackground);
     CHECK(c.showOverlay); CHECK(c.testKeys); CHECK(c.autoPilot); CHECK(c.perf);
@@ -220,6 +222,7 @@ TEST(config_shipped_ini_matches_built_in_defaults) {
     CHECK_EQ(shipped.runInBackground, def.runInBackground);
     CHECK_EQ(shipped.streamAroundPeer, def.streamAroundPeer);
     CHECK_EQ(shipped.skipIntro, def.skipIntro);
+    CHECK_EQ(shipped.bossHelper, def.bossHelper);
     CHECK_EQ(shipped.directFreeRoam, def.directFreeRoam);
     CHECK_EQ(shipped.skipLeaveSafeHouseDialog, def.skipLeaveSafeHouseDialog);
     CHECK_EQ(shipped.autoStart, def.autoStart);

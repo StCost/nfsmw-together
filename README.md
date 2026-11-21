@@ -72,8 +72,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Status overlay on F8, and it remembers whether you hid it
 - [x] Launcher (`MWTogetherLauncher.exe` next to `speed.exe`) in the game's style: name, host or join, the host's IP, start options under Settings, then Play
 - [x] A short notice in the corner when the other player joins or leaves, even with the overlay hidden.
-- [x] Notifications use game's own UI: the EA Trax banner (where songs are announced) shows "<name> joined / left";
-- [x] Notices stay on screen for 10 seconds, the game's banner included, without sliding in again (`[UI] NoticeSeconds`) (?)
+- [x] Notifications use game's own UI: the message line in the centre of the screen (where races show hints and split times) shows "<name> joined / left" in green, problems (lost connection, firewall, prologue) in orange; a long notice is shown in parts. In cutscenes and menus, where there is no HUD, the EA Trax song banner shows it instead (?)
+- [x] Notices stay on screen for 10 seconds (a notice in parts shares them, at least 3 s a part), the game's banner included, without sliding in again (`[UI] NoticeSeconds`)
 - [x] Joining while the other player is in a race: you roam freely, get a notice, and go together into the next event (?)
 - [x] Strangers can't interfere: each game ignores network packets from anyone except the player it connected to
 - [x] Event starts and restarts are repeated for a few seconds, so a lost packet can't leave you in different races
@@ -88,11 +88,11 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Spawn protection, so two cars appearing on the same spot don't collider or launch each other
 - [x] Other player's blip on the minimap
 - [x] Other player on the world map, coloured like your own arrow and moving while the map is open
-- [x] Pick your own blip colour (launcher: My colour on the map, `[Player] Color`): the other player sees you in it on the minimap and the world map (?)
+- [x] Pick your own blip colour (launcher: My colour on the map, `[Player] Color`): the other player sees you in it on the minimap and the world map
 - [x] Car-to-car collisions between players, with the impact passed on: ram your partner and their car is thrown on their screen too
 - [x] Your names in the race standings instead of the shared save name
 - [x] Your partner's car shows brake lights and damage from crashes (dents, broken parts)
-- [x] Your partner's car shows steering and nitrous (?)
+- [x] Your partner's car shows steering and nitrous
 
 
 </details>
@@ -103,7 +103,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] You see the cops chasing the other player
 - [x] Cops may switch to chasing the other player when you're both being chased (?)
 - [x] Traffic cars near the other player keep full physics instead of moving at reducing quality
-- [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC (?)
+- [x] The other player's traffic, cops and race opponents no longer float above the road (or sink into it) on your screen: a car their game runs in its cheap physics mode (no world loaded under it there) is put on your road surface, smoothly (?)
+- [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC
 - [x] Pause menu and world map don't pause the time while you're connected
 - [x] No speedbreaker in co-op (slow motion can't work for two people)
 - [x] Smooth traffic handover: when you drive away from the other player, their traffic cars around you don't vanish - they drive on as your own traffic. When you come back, your own cars stay until they're out of sight and the other player's cars only appear where you can't see them pop in (behind you or far away), or one of your nearby cars quietly takes their place (`[Traffic] SmoothHandover`, 0 = the old instant switch) (?)
@@ -119,22 +120,22 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Opponents on the client follow the host's opponents, so the race looks the same on both screens
 - [x] Opponent names match on both PCs
 - [x] Race positions use each player's real progress, and the order changes as soon as one passes the other (?)
-- [x] Joining an event from far away: the other player still gets their racer in the standings (in an AI car's body if their car model isn't loaded on your PC yet) (?)
-- [x] At a race start you stand on different grid slots and see each other's car and name from the countdown on (`SeparateGridSlots`) (?)
+- [x] Joining an event from far away: the other player still gets their racer in the standings (in an AI car's body if their car model isn't loaded on your PC yet)
+- [x] At a race start you stand on different grid slots and see each other's car and name from the countdown on (`SeparateGridSlots`)
 - [x] Start together: whoever loads first waits on the grid until the other is ready (`StartTogether`)
 - [x] Restarting a race restarts it for both of you
-- [x] AI opponents' catch-up (rubber banding) follows whichever player is ahead, so they race the best of you (`CatchUpLeader`). Blacklist rivals too: in a rival race the rival follows whoever of you is ahead (?)
+- [x] AI opponents' catch-up (rubber banding) follows whichever player is ahead, so they race the best of you (`CatchUpLeader`). Blacklist rivals too: in a rival race the rival follows whoever of you is ahead
 - [x] Race intro cutscenes play normally for both
 - [x] A win by either player counts for both: cash, unlocks and career progress in each player's own career (`SharedWins`)
 - [x] The other player's finish is shown in your standings
 - [x] When one of you finishes first, the other is finished as the winner right away, even while still driving: 1st place, the winner's screen, the payout, and in rival races the rival's progress, each in their own career (`SharedWins`) (?)
-- [x] Blacklist rival races: the rival on the client follows the host's rival, also in the second race of the series and when the two games built different cars for it (?)
+- [x] Blacklist rival races: the rival on the client follows the host's rival, also in the second race of the series and when the two games built different cars for it
 - [x] Blacklist rival races: you both race the rival in the same event (your partner's car drives alongside, outside the standings), and each of you gets the normal rival flow after winning
-- [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose (?)
+- [x] Blacklist rival races together have one more AI racer on the rival's side: one more car to beat, with the game's normal racing AI and normal catch-up (not the rival's). Its car is the rival's cutscene partner when that model is loaded, else the game's pick; both PCs build the same car (`[Coop] BossHelper`, 0 = the rival alone) (?)
+- [x] Rival rewards: after beating a rival, each player picks their own markers and gets their own rewards (pink slip, cash, parts) in their own career. Nothing is shared or synced here on purpose
 - [x] Bounty counts for each player's own career (seen after an escape)
-- [x] Milestones in co-op (speed traps, pursuit length, cost to state, infractions and the rest): each player earns their own while playing together (?)
-- [x] Shared milestones: when one of you completes a milestone or a speed trap of your Blacklist rival, the other player gets it too, with its bounty, if their career is at the same rival (`[Career] SharedMilestones`) (?)
-- [x] Challenge Series events: when you both start from the main menu, both load the event with its preset car. A player who is roaming in career isn't pulled in (?)
+- [x] Shared milestones: when one of you completes a milestone or a speed trap of your Blacklist rival, the other player gets it too, with its bounty, if their career is at the same rival (`[Career] SharedMilestones`)
+- [x] Challenge Series events: when you both start from the main menu, both load the event with its preset car. A player who is roaming in career isn't pulled in
 
 
 </details>
@@ -144,13 +145,13 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] The host keeps a copy of the other player's career save, updated after every autosave. If that player's own save is missing when they connect, it's restored from the host. An existing save is never replaced, so each player's settings stay their own (`[Career] RestoreOnlyMissing`)
 - [x] Cutscene skip voting: a cutscene you both watch is skipped only when both press skip
 - [x] Story scenes outside events: when one of you gets a story movie (Blacklist rival movie, story FMV, also in the Safe House) or a story cutscene in the world, the other gets a notice and their game waits in free roam until it's over (`SyncStoryScenes`)
-- [x] With `SyncStoryScenes=2` the same story movie also plays on the other PC if their career has got that far, and a movie you both watch is skipped only when both press skip (in-world cutscenes are never started on the other PC) (?)
-- [x] Shared pursuits in free roam (`[Coop] SharedPursuits`, on by default): when one of you gets heat the other gets the same, and the hotter of the two counts (?)
-- [x] The other player's cops are on your minimap while they chase, and your radar detector beeps for them like for your own (?)
-- [x] Ramming one of the other player's cops starts a pursuit on you, like hitting one of your own (?)
+- [x] With `SyncStoryScenes=2` the same story movie also plays on the other PC if their career has got that far, and a movie you both watch is skipped only when both press skip (in-world cutscenes are never started on the other PC)
+- [x] Shared pursuits in free roam (`[Coop] SharedPursuits`, on by default): when one of you gets heat the other gets the same, and the hotter of the two counts
+- [x] The other player's cops are on your minimap while they chase, and your radar detector beeps for them like for your own
+- [x] Ramming one of the other player's cops starts a pursuit on you, like hitting one of your own
 - [x] Busted together: if one of you gets busted, the other one is busted too, through the game's own arrest (?)
-- [x] Escape together: the cooldown only runs while neither of you is seen, starts over for both when either one is spotted, and you both get away at the same moment (?)
-- [x] No pursuit-start camera in co-op: the camera stays on your car when a chase begins (`NoPursuitCams`, launcher: No pursuit start camera) (?)
+- [x] Escape together: the cooldown only runs while neither of you is seen, starts over for both when either one is spotted, and you both get away at the same moment
+- [x] No pursuit-start camera in co-op: the camera stays on your car when a chase begins (`NoPursuitCams`, launcher: No pursuit start camera)
 - [x] With `SharedPursuits=0` it's like before: getting busted or escaping only affects the player being chased
 
 
@@ -158,6 +159,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 <details><summary><b>Quality of life (settings in <code>[Start]</code>, <code>[UI]</code> and <code>[Input]</code>)</b></summary>
 
 - [x] Load straight into career free roam after the profile (`DirectFreeRoam`); optionally skip the intro logos and movie (`SkipIntro`, off by default)
+- [x] Several profiles: the quick start picks the profile you loaded last in the game's profile list by itself (remembered as `[Start] LastProfile`); the first time, or with the quick start off, you pick it yourself (?)
 - [x] The "load complete" screen after the title confirms itself (`SkipLoadComplete`, on by default)
 - [x] No "leave the safe house?" question (`SkipLeaveSafeHouseDialog`)
 - [x] Menus react while their opening animation plays, and animate 2x faster (`IntroInput`, `MenuSpeed`) to improve UI responsivness

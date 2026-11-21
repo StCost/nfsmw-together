@@ -147,6 +147,105 @@ namespace {
         FindClose(h);
         return found;
     }
+    // Several profiles: after "Press START" the boot shows a "load" list of them (MC_List.fng) with the
+    // first one highlighted; nothing loads until one is picked. The list's entries come from the
+    // memory card's file list (circular list at [[0x91CB20]+0xCC]+0x7C; each node's name at node+8,
+    // after a prefix as long as the string 0x6CBE20([0x91CB20]+0xD0) returns) in list order, filtered
+    // by Profiles::Listed - all read the same way by the list setup at 0x563A26.
+    // With DirectFreeRoam the profile loaded last ([Start] LastProfile, written below) is picked by
+    // itself: PAD_DOWN to its row, then PAD_ACCEPT. A name that isn't in the list: left to the player.
+    std::vector<std::string> SavedProfileNames() {                // Documents\NFS Most Wanted\<name>\<name>
+        std::vector<std::string> out;
+        char docs[MAX_PATH] = "";
+        if (FAILED(SHGetFolderPathA(nullptr, CSIDL_PERSONAL, nullptr, SHGFP_TYPE_CURRENT, docs))) return out;
+        std::string root = std::string(docs) + "\\NFS Most Wanted\\";
+        WIN32_FIND_DATAA fd;
+        HANDLE h = FindFirstFileA((root + "*").c_str(), &fd);
+        if (h == INVALID_HANDLE_VALUE) return out;
+        do {
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || fd.cFileName[0] == '.') continue;
+            DWORD a = GetFileAttributesA((root + fd.cFileName + "\\" + fd.cFileName).c_str());
+            if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY)) out.push_back(fd.cFileName);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+        return out;
+    }
+    // the game's list entries, raw (filled into a fixed table so this can run under SEH)
+    int GameProfileListRaw(char (*names)[16], int max) {
+        int n = 0;
+        __try {
+            uint8_t* mc = nullptr; uint8_t* card = nullptr; void* rdr = nullptr;
+            if (!Mem::Read(0x91CB20, mc) || !mc || !Mem::Read((uintptr_t)mc + 0xCC, card) || !card || !Mem::Read((uintptr_t)mc + 0xD0, rdr) || !rdr) return 0;
+            const char* pre = ((const char*(__thiscall*)(void*))0x6CBE20)(rdr);
+            size_t pl = pre ? strlen(pre) : 0;
+            uint8_t* head = card + 0x7C; uint8_t* node = nullptr;
+            Mem::Read((uintptr_t)head, node);
+            for (int guard = 0; node && node != head && guard < 64 && n < max; ++guard) {
+                const char* nm = (const char*)node + 8 + pl;
+                size_t l = strnlen(nm, 15);
+                if (l < 15) { memcpy(names[n], nm, l + 1); if (Profiles::Listed(names[n])) ++n; }
+                if (!Mem::Read((uintptr_t)node, node)) break;
+            }
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+        return n;
+    }
+    std::vector<std::string> GameProfileList() {
+        char names[32][16] = {};
+        int n = GameProfileListRaw(names, 32);
+        return std::vector<std::string>(names, names + n);
+    }
+    void QueueFeMessage(uint32_t msg, const char* pkg) {
+        void* fe = nullptr;
+        if (Mem::Read(0x91CADC, fe) && fe) ((void(__thiscall*)(void*, uint32_t, const char*, uint32_t))0x516C50)(fe, msg, pkg, 0xFF);
+    }
+    // MC_List up: walk to the remembered profile and pick it (one step per call, ~4 per second)
+    bool PickProfileStep(void* fe) {
+        static int state = 0, target = -1, sent = 0; static DWORD since = 0, last = 0;
+        if (state == 3) return false;                                  // done (or left to the player)
+        bool up = ((bool(__thiscall*)(void*, const char*))0x516B50)(fe, "MC_List.fng");
+        if (!up) { since = 0; return false; }
+        if (!since) since = GetTickCount();
+        if (state == 0) {
+            if (GetTickCount() - since < 800) return true;            // let the list fill in
+            std::vector<std::string> list = GameProfileList();
+            std::string names;
+            for (auto& s : list) names += (names.empty() ? "" : ", ") + s;
+            target = Profiles::IndexOf(list, g_cfg.lastProfile);
+            if (!g_cfg.directFreeRoam || target < 0) {
+                LOG("Start: profile list [%s] - %s", names.c_str(), !g_cfg.directFreeRoam ? "left to the player (quick start off)"
+                    : g_cfg.lastProfile.empty() ? "no profile remembered yet, pick one" : "the remembered profile isn't in it, pick one");
+                state = 3; return true;
+            }
+            LOG("Start: profile list [%s] - picking %s (row %d)", names.c_str(), g_cfg.lastProfile.c_str(), target + 1);
+            state = 1; sent = 0; last = GetTickCount();
+            return true;
+        }
+        if (GetTickCount() - last < 250) return true;
+        last = GetTickCount();
+        if (state == 1 && sent < target) { QueueFeMessage(0x911C0A4B /*PAD_DOWN*/, "MC_List.fng"); ++sent; return true; }
+        if (state == 1) { state = 2; return true; }                     // one more pause after the last step
+        QueueFeMessage(0x406415E3 /*PAD_ACCEPT*/, "MC_List.fng");
+        state = 3;
+        return true;
+    }
+    // Once a profile is loaded: remember which one ([Start] LastProfile) for the next start.
+    void RememberLoadedProfile(uint8_t* fedb) {
+        static bool done = false;
+        if (done) return;
+        uint8_t* up = nullptr;
+        if (!Mem::Read((uintptr_t)fedb + 0x10, up) || !up) return;
+        done = true;
+        static uint8_t block[0x1000];
+        size_t got = 0;
+        while (got < sizeof(block) && Mem::SafeRead(up + got, block + got, 0x100)) got += 0x100;
+        std::vector<std::string> names = SavedProfileNames();
+        std::string alias = Profiles::FindAlias(block, got, names);
+        if (alias.empty()) { LOG("Start: loaded profile not recognised (%d saved) - not remembered", (int)names.size()); return; }
+        if (_stricmp(alias.c_str(), g_cfg.lastProfile.c_str()) == 0) return;
+        g_cfg.lastProfile = alias;
+        if (!g_cfg.iniFile.empty()) WritePrivateProfileStringA("Start", "LastProfile", alias.c_str(), g_cfg.iniFile.c_str());
+        LOG("Start: remembered profile %s for the next start", alias.c_str());
+    }
     bool g_mcSawQuestion = false;       // a real question was on screen during this boot: answer nothing more
     bool ConfirmLoadScreen(DWORD shownMs) {
         void* cfeng = nullptr;
@@ -284,6 +383,8 @@ void Game::BootTick() {
             }
             return;
         }
+        if (fe && bfm && PickProfileStep(fe)) return;                     // several profiles: the list
+        if (fedb && fedb[3]) RememberLoadedProfile(fedb);
         if (fe && bfm && ((bool(__thiscall*)(void*, const char*))0x516B50)(fe, "MC_Main.fng")) {
             static DWORD since = 0, lastTap = 0;
             if (!since) since = GetTickCount();
@@ -398,6 +499,93 @@ void Game::ChyronTick() {
         LOG("Notice: %s - the banner keeps the game's own timing", r < 0 ? "exception while holding the game banner" : "banner timer object not found");
         g_chyronHoldUntil = 0;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Notices in the centre of the screen, coloured by importance: the HUD's generic message - the line
+// the race script uses for its hints and the race shows split times in (green ahead / orange behind).
+//  The first player's HUD ([0x92D87C][0] -> slot 8 -> +4) gives interface 0x5650B0 (UCOM find 0x5D59F0);
+//  its slot 1 (0x568030 in the HUD) shows (text, 0, colour hash, 0, 0, priority) and returns false while
+//  a message with a higher priority is up (HUD+0x14 = current priority). The text is copied, 64 bytes
+//  (so 63 characters: longer notices go in parts, noticeutil.h). Colour hashes from the split times
+//  (0x57AC52 / 0x57AC7D): 0xA19BB14C green, 0x5230FAF6 orange. Script messages use priority 5, split
+//  times 3; ours use 4. Where there's no HUD (menus) or it's hidden (a cutscene), the notice goes to the
+//  game's song banner (ShowChyron below) instead, which the game shows there.
+// ---------------------------------------------------------------------------
+//  The "colour" is really the show animation (FEScript id) run on the message's text object (gm+8);
+//  the HUD's update (0x567F80) clears the message (priority back to 0) once that script has ended. It
+//  lasts ~1.3 s at [UI] MenuSpeed 2, so - like the song banner - we hold the script at its middle (fully
+//  visible) for the notice's time, then let it run out.
+namespace {
+    constexpr uint32_t HudGreen = 0xA19BB14C, HudOrange = 0x5230FAF6;
+    constexpr int NoticePriority = 4;
+    char g_hudText[64];
+    DWORD g_hudHoldUntil = 0; uint32_t g_hudHoldScript = 0;
+    void* HudMessageIface() {     // null where there's no HUD
+        int cnt = 0; void** arr = nullptr;
+        if (!Mem::Read(0x92D884, cnt) || cnt <= 0 || !Mem::Read(0x92D87C, arr) || !arr || !arr[0]) return nullptr;
+        void* p = arr[0];
+        void* x = VCall<void*(__thiscall*)(void*)>(p, 8)(p);
+        void* obj = x ? *(void**)((char*)x + 4) : nullptr;
+        return obj ? ((void*(__thiscall*)(void*, uint32_t))0x5D59F0)(obj, 0x5650B0) : nullptr;
+    }
+    // 1 shown, 0 a more important message is up (try again soon), -1 no HUD here
+    int HudMessageRaw(const char* text, bool warn) {
+        __try {
+            void* gm = HudMessageIface();
+            if (!gm) return -1;
+            strncpy_s(g_hudText, text, _TRUNCATE);
+            uint32_t script = warn ? HudOrange : HudGreen;
+            bool ok = VCall<bool(__thiscall*)(void*, const char*, int, uint32_t, int, int, int)>(gm, 1)
+                (gm, g_hudText, 0, script, 0, 0, NoticePriority);
+            if (ok) g_hudHoldScript = script;
+            return ok ? 1 : 0;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+    }
+    // every frame while a notice should stay: keep its show script at the middle
+    void HudHoldRaw() {
+        __try {
+            uint8_t* gm = (uint8_t*)HudMessageIface();
+            uint8_t* txt = gm ? *(uint8_t**)(gm + 8) : nullptr;
+            uint8_t* scr = txt ? *(uint8_t**)(txt + 0x54) : nullptr;
+            if (!scr || *(uint32_t*)(scr + 0x30) != g_hudHoldScript) return;
+            uint32_t len = *(uint32_t*)(scr + 0x0C), hold = len / 2;
+            if (*(uint32_t*)(scr + 0x10) > hold) *(uint32_t*)(scr + 0x10) = hold;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { g_hudHoldUntil = 0; }
+    }
+    struct QueuedNotice { std::string full; std::vector<std::string> parts; size_t next; bool warn; DWORD at; };
+    std::deque<QueuedNotice> g_notices;
+    DWORD g_noticeNext = 0;
+}
+void Game::QueueNotice(const std::string& text, bool warn) {
+    if (text.empty()) return;
+    g_notices.push_back({ text, Notice::Split(text), 0, warn, GetTickCount() });
+    while (g_notices.size() > 6) g_notices.pop_front();             // a burst: the newest ones matter
+}
+void Game::NoticeTick() {
+    if (!g_ok) return;
+    DWORD now = GetTickCount();
+    if (g_hudHoldUntil) { if ((int)(now - g_hudHoldUntil) >= 0) g_hudHoldUntil = 0; else HudHoldRaw(); }
+    if (g_notices.empty()) return;
+    if (!g_cfg.gameNotices) { g_notices.clear(); return; }
+    if ((int)(now - g_noticeNext) < 0) return;
+    QueuedNotice& q = g_notices.front();
+    if (now - q.at > 20000) { LOG("Notice: not shown in 20 s, dropped: %s", q.full.c_str()); g_notices.pop_front(); return; }
+    int r = (GameFlowState() == 6 && !NisActive()) ? HudMessageRaw(q.parts[q.next].c_str(), q.warn) : -1;
+    if (r == 1) {
+        // [UI] NoticeSeconds for the whole notice, shared by its parts (at least 3 s each)
+        DWORD partMs = (DWORD)g_cfg.noticeSeconds * 1000u / (DWORD)q.parts.size();
+        if (partMs < 3000) partMs = 3000;
+        g_hudHoldUntil = (now + partMs) | 1;
+        if (++q.next >= q.parts.size()) g_notices.pop_front();
+        g_noticeNext = now + partMs;
+    } else if (r == 0) {
+        g_noticeNext = now + 300;                                       // a race message is up: right after it
+    } else if (ShowChyron("Most Wanted Together", q.full.c_str(), "")) {   // no HUD here: the song banner
+        LOG("Notice: in the game banner (no HUD here): %s", q.full.c_str());
+        g_notices.pop_front();
+        g_noticeNext = now + 1000;
+    } else g_noticeNext = now + 500;
 }
 
 bool Game::ShowChyron(const char* title, const char* line2, const char* line3) {

@@ -136,7 +136,8 @@ struct CarPacket {
 
 struct TrafficEntry {
     uint16_t id;          // host-side id (stable while the car exists)
-    uint16_t flags;       // bit0 = cop car, bit1 = race opponent, bit2 = cop in a pursuit (radar icon)
+    uint16_t flags;       // bit0 = cop car, bit1 = race opponent, bit2 = cop in a pursuit (radar icon),
+                          // bit3 = emulated physics on the owner (height from the road path: put the copy on the ground)
     uint32_t model;       // model key (hash of the model name)
     uint32_t glare;       // light bits (IVehicle+0x9C): head/brake/reverse/signals/cop lights
     float    pos[3];

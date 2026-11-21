@@ -77,7 +77,7 @@ try {
                      Show-Log "$always|Cutscene|Event: starting|FE screens: \[HUD" }
         'pursuit'  { Start-Game; Start-Sleep 40; Send-Cmd 'pursuit'; Start-Sleep 60; Send-Cmd 'uncop'; Start-Sleep 20
                      Show-Log "$always|Pursuit:|Cops: showing|UI: closing" 16 }
-        'ram'      { Start-Game; Start-Sleep 45; Send-Cmd 'autopilot'; Send-Cmd 'ram'; Start-Sleep 5; Send-Cmd 'ram'; Start-Sleep 3; Send-Cmd 'pos'; Start-Sleep 8
+        'ram'      { Start-Game; Start-Sleep 45; Send-Cmd 'autopilot'; Send-Cmd 'ram'; Start-Sleep 5; Send-Cmd 'ram'; Start-Sleep 5; Send-Cmd 'ram'; Start-Sleep 3; Send-Cmd 'pos'; Start-Sleep 8
                      Show-Log "$always|Collision:|protection" }
         'together' { if (-not $Event) { $Event = '15.1.1' }; Start-Game; Start-Sleep 20; Send-Cmd "event $Event"; Start-Sleep 50
                      Show-Log "$always|Start: (on|go)|Event: starting|FE screens: \[HUD" }

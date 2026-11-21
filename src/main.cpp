@@ -34,7 +34,6 @@ namespace {
     bool        g_bgBoot = false;             // booting without focus
     HWND        g_prevForeground = nullptr;   // the window that had focus when the game started
     std::string g_toast;                      // (no longer shown: notices use the game's banner only)
-    std::string g_pendingNotice; uint32_t g_pendingAt = 0;   // a notice waiting for the banner
     uint32_t    g_toastAt = 0;
     bool        g_coopHere = true;            // this profile may play co-op (career started, prologue done)
     const char* g_coopStatus = "";            // overlay line when co-op is off because of the prologue
@@ -67,12 +66,10 @@ namespace {
         DWORD old;
         if (VirtualProtect(f, 5, PAGE_EXECUTE_READWRITE, &old)) { memcpy(f, jmp, 5); VirtualProtect(f, 5, old, &old); FlushInstructionCache(GetCurrentProcess(), f, 5); LOG("Crash dialog: plain error box installed"); }
     }
-    void Toast(const std::string& s) {
-        bool inGame = g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", s.c_str(), "");
-        // only the game's own banner: where it can't show right now (loading, a menu), the notice waits
-        // and appears as soon as it can (the newest one; dropped after 20 s)
-        if (inGame) g_pendingNotice.clear(); else { g_pendingNotice = s; g_pendingAt = GetTickCount(); }
-        LOG("Notice: %s%s", s.c_str(), inGame ? " (game banner)" : "");
+    // A notice for the player: in the centre of the screen, green, or orange for a problem (Game::QueueNotice)
+    void Toast(const std::string& s, bool warn = false) {
+        if (g_gameOk) Game::QueueNotice(s, warn);
+        LOG("Notice: %s%s", warn ? "(warning) " : "", s.c_str());
     }
 
     const char* FlowName(int s) {
@@ -223,6 +220,7 @@ namespace {
                     else if (c == "slowai") r = Game::DebugStopOpponents();
                     else if (c == "cash") r = Game::DebugCash();
                     else if (c == "milestones") r = Game::DebugMilestones("");
+                    else if (c == "ground") r = Game::DebugGround();
                     else if (c == "milestone") r = Game::DebugMilestones("milestone");
                     else if (c == "speedtrap") r = Game::DebugMilestones("speedtrap");
                     else if (c == "pursuit") r = Game::DebugForcePursuit();
@@ -230,7 +228,7 @@ namespace {
                     else if (c == "unclone") r = Game::DebugKillClone();
                     else if (c.rfind("shot ", 0) == 0) { Overlay::Screenshot(c.substr(5)); r = "screenshot"; }
                     else if (c.rfind("accept ", 0) == 0) r = Game::FEAccept(c.substr(7).c_str());
-                    else if (c.rfind("notice ", 0) == 0) { Toast(c.substr(7)); r = "notice shown"; }
+                    else if (c.rfind("notice ", 0) == 0) { bool w = c.rfind("notice warn ", 0) == 0; Toast(c.substr(w ? 12 : 7), w); r = "notice queued"; }
                     else r = "unknown command";
                     LOG("Command '%s': %s", c.c_str(), r.c_str());
                     g_spawnMsg = r;
@@ -278,10 +276,10 @@ namespace {
         if (g_gameOk) Game::SetCoopLinked(linked);
         {
             static bool toldHere = false, toldPeer = false;
-            if (st.connected && !g_coopHere && !toldHere) { toldHere = true; Toast("Finish the prologue first - co-op starts in free roam"); LOG("Co-op: off - this profile is still in the prologue / career not started"); }
+            if (st.connected && !g_coopHere && !toldHere) { toldHere = true; Toast("Finish the prologue first - co-op starts in free roam", true); LOG("Co-op: off - this profile is still in the prologue / career not started"); }
             if (st.connected && g_coopHere && !peerAllowed && !toldPeer) {
                 toldPeer = true;
-                Toast((st.peerName.empty() ? std::string("The other player") : st.peerName) + " is still in the prologue - co-op starts when they reach free roam");
+                Toast((st.peerName.empty() ? std::string("The other player") : st.peerName) + " is still in the prologue - co-op starts when they reach free roam", true);
                 LOG("Co-op: off - the other player is still in the prologue");
             }
             if (!st.connected) toldPeer = false;
@@ -292,14 +290,14 @@ namespace {
                 else if (!toldOneWay && now - st.connectedTick > 10000 && now - st.peerHearsUsTick > 10000) {
                     toldOneWay = true;
                     std::string who = st.peerName.empty() ? std::string("The other player") : st.peerName;
-                    Toast(who + " doesn't receive your game - allow UDP " + std::to_string(g_cfg.port) + " in the firewall on their PC");
+                    Toast(who + " doesn't receive your game - allow UDP " + std::to_string(g_cfg.port) + " in their PC's firewall", true);
                     LOG("Net: one-way - we receive the other player, they don't receive us (their firewall / VPN blocks UDP %d)", g_cfg.port);
                 }
                 if (g_gameOk && Game::GameFlowState() == 6) { if (!inGameSince) inGameSince = now; } else inGameSince = 0;
                 if (st.connected) toldNoAnswer = false;
                 else if (!g_cfg.isHost && !toldNoAnswer && inGameSince && now - inGameSince > 20000) {
                     toldNoAnswer = true;
-                    Toast("No answer from the host - check the host's IP, and allow UDP " + std::to_string(g_cfg.port) + " in the firewall on this PC");
+                    Toast("No answer from the host - check the host's IP and allow UDP " + std::to_string(g_cfg.port) + " in this PC's firewall", true);
                     LOG("Net: no answer from the host %s - wrong IP, or a firewall blocks UDP %d", g_cfg.peerIp.c_str(), g_cfg.port);
                 }
             }
@@ -312,7 +310,7 @@ namespace {
                     toldMine = mine; toldTheirs = theirs;
                     std::string who = st.peerName.empty() ? std::string("The other player") : st.peerName;
                     Toast(who + " is at Blacklist #" + std::to_string(theirs) + ", you are at #" + std::to_string(mine) +
-                          (mine > theirs ? " - beat your rival to catch up" : " - they need to beat their rival to catch up"));
+                          (mine > theirs ? " - beat your rival to catch up" : " - they need to beat their rival to catch up"), true);
                     LOG("Career: different rivals - ours #%d, theirs #%d", mine, theirs);
                 }
             }
@@ -374,7 +372,7 @@ namespace {
             if (st.connected && !st.peerName.empty()) lastPeer = st.peerName;
             if (st.connected != wasConnected) {
                 if (st.connected) Toast((st.peerName.empty() ? std::string("Player") : st.peerName) + " joined");
-                else Toast((lastPeer.empty() ? std::string("The other player") : lastPeer) + (Net::PeerSaidBye() ? " left" : " lost connection"));
+                else Toast((lastPeer.empty() ? std::string("The other player") : lastPeer) + (Net::PeerSaidBye() ? " left" : " lost connection"), true);
                 namePending = st.connected && st.peerName.empty();
                 wasConnected = st.connected;
             } else if (st.connected && namePending && !st.peerName.empty()) {
@@ -412,7 +410,7 @@ namespace {
         {   // connection problems the player should know about (shown once per message)
             static std::string lastErr;
             std::string ne = (g_netOk && !st.connected) ? Net::LastError() : "";
-            if (ne != lastErr) { if (!ne.empty()) Toast("Can't connect: " + ne); lastErr = ne; }
+            if (ne != lastErr) { if (!ne.empty()) Toast("Can't connect: " + ne, true); lastErr = ne; }
         }
         {   // waiting on the grid for the other player
             static std::string lastStart;
@@ -429,14 +427,7 @@ namespace {
             std::string ss = g_gameOk ? Game::StoryStatus() : "";
             if (ss != lastStory) { if (!ss.empty()) Toast(ss); lastStory = ss; }
         }
-        if (!g_pendingNotice.empty()) {   // a notice that couldn't show yet: try the banner again
-            static DWORD nextTry = 0;
-            if (GetTickCount() - g_pendingAt > 20000) g_pendingNotice.clear();
-            else if (GetTickCount() >= nextTry) {
-                nextTry = GetTickCount() + 500;
-                if (g_cfg.gameNotices && g_gameOk && Game::ShowChyron("NFS MW Together", g_pendingNotice.c_str(), "")) g_pendingNotice.clear();
-            }
-        }
+        if (g_gameOk) Game::NoticeTick();
         bool toastOn = false;   // the black corner box is gone
         Overlay::SetForceShow(toastOn);
 

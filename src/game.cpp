@@ -3,6 +3,9 @@
 #include "pursuitutil.h"
 #include "milestoneutil.h"
 #include "raceutil.h"
+#include "profileutil.h"
+#include "groundutil.h"
+#include "noticeutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
@@ -13,6 +16,7 @@
 #include <initializer_list>
 #include <shlobj.h>
 #include <vector>
+#include <deque>
 #include <string>
 #include <share.h>
 
@@ -765,10 +769,39 @@ static bool BossRaceStarting() {
     } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Rival races together: one more AI racer on the rival's side (bosshelper.inl). Set when the race
+// builds its racer list, read by the car factory below.
+namespace {
+    bool     g_helperOn = false;        // this race load added the helper
+    int      g_helperOpp = -1;          // its opponent index (= the event's own opponent count)
+    int      g_helperSlot = -1;         // its GRacerInfo slot in GRaceStatus
+    int      g_bossRacerBuilds = 0;     // AI racer cars built for this rival race so far
+    bool     g_helperPeerRoster = false;// the client joined with the host's roster: its helper car is entry g_helperOpp
+    struct NisCar { uint32_t key; DWORD at; };
+    NisCar   g_nisCars[8] = {}; int g_nisNext = 0;   // cutscene (NIS) cars built lately: the rival's partners
+}
+static void InstallBossHelper();
+// a cutscene car built in the last 5 minutes that is neither the rival's nor ours: the rival's partner
+static uint32_t PartnerCarKey(uint32_t bossKey, uint32_t ownKey) {
+    DWORD now = GetTickCount(); uint32_t best = 0; DWORD bestAt = 0;
+    for (const NisCar& c : g_nisCars)
+        if (c.key && c.key != bossKey && c.key != ownKey && now - c.at < 300000 && (!best || (int)(c.at - bestAt) > 0)) { best = c.key; bestAt = c.at; }
+    return best;
+}
+
+static uint32_t OwnCarKeySafe() {
+    __try { void* me = LocalVehicle(); return me ? VehicleKey(me) : 0; } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
 static void* __cdecl hk_VehicleConstruct(SimParam p) {
     using Fn = void* (__cdecl*)(SimParam);
     VehicleParams* vp = (VehicleParams*)p.mData;
     bool replaced = false;
+    if (vp && vp->carClass == DRV_NIS && vp->carType) {
+        g_nisCars[g_nisNext].key = vp->carType; g_nisCars[g_nisNext].at = GetTickCount();
+        g_nisNext = (g_nisNext + 1) % 8;
+        LOG("Race: cutscene car built, model %08X", vp->carType);
+    }
     if (vp && vp->carClass == DRV_RACER && !g_racerReplacedThisLoad && g_cfg.ghostEnabled && Net::Stats().connected && g_coopLinked && !BossRaceStarting()) {
         if (const CarInfo* pc = Net::PeerCar()) {
             g_origRacer[0] = vp->carType; g_origRacerCustom = vp->customization; g_origRacerMatched = vp->matched;
@@ -787,7 +820,28 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
     // (not in a rival race: the event itself names the rival's car, so both games build the same one; a
     // roster could only swap it for another car and the client's rival would then match no host racer)
     bool boss = vp && vp->carClass == DRV_RACER && BossRaceStarting();
-    if (boss && g_usePeerRoster) { g_usePeerRoster = false; LOG("Race: rival race - the event's own rival car, not the partner's roster"); }
+    if (boss && g_usePeerRoster) {
+        g_usePeerRoster = false; LOG("Race: rival race - the event's own rival car, not the partner's roster");
+        if (g_helperOn) g_helperPeerRoster = true;      // ... but the helper is the host's
+    }
+    // the helper (the racer after the event's own opponents): the host's choice on the client, else the
+    // rival's cutscene partner when that model is loaded, else the car the game picked
+    bool helper = boss && g_helperOn && g_bossRacerBuilds++ == g_helperOpp;
+    uint32_t hKey = 0; void* hCustom = nullptr; void* hMatched = nullptr; const char* hFrom = "";
+    if (helper) {
+        hKey = vp->carType; hCustom = vp->customization; hMatched = vp->matched;
+        uint32_t want = 0; void* wantCustom = nullptr;
+        if (g_helperPeerRoster && g_helperOpp < g_peerRosterN) {
+            const RosterEntry& r = g_peerRoster[g_helperOpp];
+            want = r.key; wantCustom = r.hasCustom ? (void*)r.custom : nullptr; hFrom = "the host's helper";
+        } else {
+            uint32_t own = OwnCarKeySafe();
+            uint32_t bossKey = g_localRosterN > 0 ? g_localRoster[0].key : 0;
+            want = PartnerCarKey(bossKey, own); hFrom = "the rival's cutscene partner";
+        }
+        if (want && want != vp->carType) { vp->carType = want; vp->customization = wantCustom; vp->matched = nullptr; }
+        else { hKey = 0; hFrom = "the game's pick"; }
+    }
     if (vp && vp->carClass == DRV_RACER && !replaced && g_coopLinked && g_usePeerRoster && g_peerRosterNext < g_peerRosterN) {
         RosterEntry& r = g_peerRoster[g_peerRosterNext++];
         rKey = vp->carType; rCustom = vp->customization; rMatched = vp->matched;
@@ -798,7 +852,13 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
     }
 
     void* simable = ((Fn)Addr::PVehicleConstruct)(p);
-    if (boss) LOG("Race: rival race - rival built as model %08X (%s)", vp->carType, simable ? "ok" : "FAILED");
+    if (helper && hKey && !simable) {
+        LOG("Race: rival race - helper model %08X (%s) not loaded here - the game's pick %08X instead", vp->carType, hFrom, hKey);
+        vp->carType = hKey; vp->customization = hCustom; vp->matched = hMatched; hFrom = "the game's pick";
+        simable = ((Fn)Addr::PVehicleConstruct)(p);
+    }
+    if (helper) LOG("Race: rival race - helper racer built as model %08X, %s (%s)", vp->carType, hFrom, simable ? "ok" : "FAILED");
+    else if (boss) LOG("Race: rival race - rival built as model %08X (%s)", vp->carType, simable ? "ok" : "FAILED");
     if (fromRoster) {
         if (simable) LOG("Race: opponent %d built as the peer's opponent (key %08X)", g_peerRosterNext, vp->carType);
         else {
@@ -860,6 +920,7 @@ bool Game::InstallVehicleFactoryHook() {
     InstallNisHook();
     InstallStoryHooks();
     InstallSaveSync();
+    InstallBossHelper();
     Net::OnHit = [](const float* dv) {
         if (!g_coopLinked) return;
         __try {
@@ -954,6 +1015,7 @@ void Game::SetDataDir(const char* dir) { strncpy_s(g_dataDir, dir, _TRUNCATE); }
 #include "weather.inl"
 #include "follow.inl"
 #include "milestone.inl"
+#include "bosshelper.inl"
 
 void Game::ReleaseGhost() {
     g_streamPeer = false;

@@ -53,6 +53,8 @@ void Config::Load(const char* ini) {
     startTogether = ReadInt(ini, "Coop", "StartTogether", 1) != 0;
     separateGridSlots = ReadInt(ini, "Coop", "SeparateGridSlots", 1) != 0;
     catchUpLeader = ReadInt(ini, "Coop", "CatchUpLeader", 1) != 0;
+    bossHelper = ReadInt(ini, "Coop", "BossHelper", 1) != 0;
+    bossHelperSolo = ReadInt(ini, "Debug", "BossHelperSolo", 0) != 0;
     noSlowMotion = ReadInt(ini, "Coop", "NoSlowMotion", 1) != 0;
     syncWeather = ReadInt(ini, "Coop", "SyncWeather", 1) != 0;
     followToPursuits = ReadInt(ini, "Coop", "FollowToPursuits", 1) != 0;
@@ -72,6 +74,8 @@ void Config::Load(const char* ini) {
     keepPadBindings = ReadInt(ini, "Input", "KeepPadBindings", 1) != 0;
     skipIntro = ReadInt(ini, "Start", "SkipIntro", 0) != 0;
     directFreeRoam = ReadInt(ini, "Start", "DirectFreeRoam", 1) != 0;
+    lastProfile = ReadStr(ini, "Start", "LastProfile", "");
+    iniFile = ini ? ini : "";
     skipLoadComplete = ReadInt(ini, "Start", "SkipLoadComplete", 1) != 0;
     skipLeaveSafeHouseDialog = ReadInt(ini, "Start", "SkipLeaveSafeHouseDialog", 1) != 0;
     streamAroundPeer = ReadInt(ini, "Coop", "StreamAroundPeer", 1) != 0;

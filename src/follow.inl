@@ -64,6 +64,6 @@ void Game::InstallFollow() {
         g_follow.loadAt = GetTickCount(); g_follow.moveAt = g_follow.loadAt + 4000; g_follow.pending = true;
         StreamHoldAt(pos, 20000);                                            // load the world there first
         LOG("Follow: the other player went to a Blacklist pursuit - loading the world there, moving in 4 s");
-        { std::string m = (Net::Stats().peerName.empty() ? std::string("The other player") : Net::Stats().peerName) + " started a Blacklist pursuit - taking you there"; if (g_cfg.gameNotices) Game::ShowChyron("NFS MW Together", m.c_str(), ""); }
+        { std::string m = (Net::Stats().peerName.empty() ? std::string("The other player") : Net::Stats().peerName) + " started a Blacklist pursuit - taking you there"; Game::QueueNotice(m, false); }
     };
 }

@@ -24,7 +24,10 @@ struct Config {
     bool        directFreeRoam = true;
     bool        skipLoadComplete = true; // [Start] SkipLoadComplete - confirm the "load complete" screen by itself   // [Start] DirectFreeRoam - load career free roam right after the profile
     bool        skipLeaveSafeHouseDialog = true; // [Start] SkipLeaveSafeHouseDialog
-    bool        gameNotices = true;       // [UI] GameNotices - notices in the game's own banner (EA Trax chyron)
+    std::string lastProfile;             // [Start] LastProfile - written by the mod: the profile loaded last; with DirectFreeRoam
+                                         // it is picked by itself in the profile list (several profiles)
+    std::string iniFile;                 // the ini this was loaded from (the mod writes LastProfile there)
+    bool        gameNotices = true;       // [UI] GameNotices - notices in the game's message line (centre of the screen; banner in cutscenes / menus)
     int         noticeSeconds = 10;       // [UI] NoticeSeconds - how long a notice stays on screen (2..60)
     bool        gamepadHotplug = true;    // [Input] GamepadHotplug - pick up pads connected while the game runs
     bool        keepPadBindings = true;   // [Input] KeepPadBindings - starting without the pad keeps its bindings
@@ -38,6 +41,8 @@ struct Config {
     bool        noPursuitCams = true;    // [Coop] NoPursuitCams - no pursuit-start camera (look at the cop) while connected
     bool        noSlowMotion = true;     // [Coop] NoSlowMotion - no slow-motion moments while connected (speed traps, pursuit / crash cams)
     bool        catchUpLeader = true;    // [Coop] CatchUpLeader - AI catch-up follows whichever player is ahead
+    bool        bossHelper = true;       // [Coop] BossHelper - co-op Blacklist rival races get one more AI racer (normal AI)
+    bool        bossHelperSolo = false;  // [Debug] BossHelperSolo - test: the extra rival-race racer also when not connected
     bool        startTogether = true;    // [Coop] StartTogether - wait on the grid until the other player has loaded
     bool        separateGridSlots = true; // [Coop] SeparateGridSlots - client: move off the grid slot both games give their own player
     int         syncStoryScenes = 1;     // [Coop] SyncStoryScenes - 0 off, 1 the other game waits while one watches a story scene

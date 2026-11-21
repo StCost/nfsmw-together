@@ -136,6 +136,10 @@ namespace {
         DWORD    blendT0 = 0;    // GetTickCount when the glide started (0 = none)
         float    blendOff[3] = {};
         float    blendRot[4] = {};
+        // on the ground (groundutil.h): the car's ride height, learned from full-physics samples, and
+        // the height correction we apply now (follows its target smoothly)
+        float    ride = 0; bool rideKnown = false;
+        float    groundFix = 0; DWORD groundAt = 0, learnAt = 0;
     };
     Mirror g_mirrors[48];
     bool   g_trafficNear = false;
@@ -205,6 +209,58 @@ namespace {
         m = Mirror{};
     }
 
+    // The world height under a point of our game: WCollisionMgr::GetWorldHeightAtPointRigorous 0x789870
+    // (thiscall on a {0, 3} collision-manager struct, (const Vector3* pt, float* y, Vector3* normal), ret
+    // 0xC; a fast lookup, then a ray from above). False where we have no world collision.
+    bool GroundHeightAt(const float* p, float& y) {
+        __try {
+            uint32_t mgr[2] = { 0, 3 };
+            float pt[3] = { p[0], p[1], p[2] }, h = 0;
+            if (!((bool(__thiscall*)(void*, const float*, float*, float*))0x789870)(mgr, pt, &h, nullptr)) return false;
+            if (!std::isfinite(h)) return false;
+            y = h; return true;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+    // The owner's car runs in the emulated physics mode (height from the road path: it may float).
+    // IVehicle (vtable 0x8AA828) slot 14 = physics mode (PVehicle+0x158: 1 full, 2 emulated); the racer
+    // AI switches mode 2 on when there's no world collision under the car (0x680840 -> 0x415E50) and
+    // back off once there is (0x415E80), checked every AI update.
+    bool EmulatedPhysics(void* iv) {
+        __try {
+            if (!iv || VTable(iv) != 0x8AA828) return false;
+            return VCall<int(__thiscall*)(void*)>(iv, 14)(iv) == 2;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+    int   g_groundFixed = 0, g_groundLearned = 0;   // statistics for the log
+    float g_groundMaxFix = 0;
+    // Our copy of a car the owner runs in the emulated mode: put it on our ground (see groundutil.h).
+    void GroundMirror(Mirror& m, void* rb, float* pos, const float* vel) {
+        const TrafficEntry& e = m.s[m.n - 1].e;
+        bool floating = (e.flags & 8) != 0;
+        DWORD now = GetTickCount();
+        float dt = m.groundAt ? (now - m.groundAt) / 1000.f : 0.f;
+        m.groundAt = now;
+        float target = 0;
+        if (!floating) {
+            if (now - m.learnAt >= 500) {                                     // learn the ride height now and then
+                m.learnAt = now;
+                float gy;
+                if (GroundHeightAt(pos, gy) && Ground::Learn(pos[1], gy, vel[1], m.ride, m.rideKnown)) ++g_groundLearned;
+            }
+        } else {
+            float gy;
+            bool have = GroundHeightAt(pos, gy);
+            target = Ground::Target(true, have, pos[1], gy, m.rideKnown, m.ride);
+        }
+        if (target == 0 && m.groundFix == 0) return;
+        m.groundFix = Ground::Step(m.groundFix, target, dt);
+        if (m.groundFix == 0) return;
+        ++g_groundFixed;
+        if (fabsf(m.groundFix) > g_groundMaxFix) g_groundMaxFix = fabsf(m.groundFix);
+        pos[1] += m.groundFix;
+        RB_SetVec(rb, RB_SetPosition, pos);
+    }
+
     void DriveMirror(Mirror& m, double renderSendMs) {
         if (!m.iv || m.n == 0) return;
         void* rb = RigidBodyOf(m.iv);
@@ -258,6 +314,7 @@ namespace {
         RB_SetVec(rb, RB_SetPosition, pos);
         RB_SetVec(rb, RB_SetLinearVelocity, vel);
         RB_SetVec(rb, RB_SetAngularVelocity, av);
+        GroundMirror(m, rb, pos, vel);
     }
 
     // host: stable ids for its traffic cars
@@ -596,6 +653,14 @@ static bool PlaceHostCar(Mirror& m, const NetUtil::CamView& cam, const float* lp
 // Spawn / drive / expire the mirror cars (both sides: the client mirrors the host's traffic and
 // cops, the host mirrors the client's own pursuit cops).
 static int MaintainMirrors(double now) {
+    {   // how often copies were put on the ground (every 10 s while it happens)
+        static DWORD last = 0; static int lastLearned = 0;
+        if (GetTickCount() - last > 10000) {
+            if (g_groundFixed) LOG("Traffic: %d frame(s) of copies put on the ground (largest correction %.2f m), %d ride height sample(s)",
+                                   g_groundFixed, g_groundMaxFix, g_groundLearned - lastLearned);
+            last = GetTickCount(); lastLearned = g_groundLearned; g_groundFixed = 0; g_groundMaxFix = 0;
+        }
+    }
     double renderSend = now - Net::PeerClockOffsetMs() - g_cfg.interpDelayMs;
     int spawned = 0, alive = 0, freed = 0;
     g_viewWaiting = 0;
@@ -750,6 +815,7 @@ static int CollectOwned(std::initializer_list<int> lists, const float* to, Traff
             void* pai = Find(cand[i].iv, 0x4038E0);
             if (pai && VCall<bool(__thiscall*)(void*)>(pai, 5)(pai)) e.flags |= 4;
         }
+        if (EmulatedPhysics(cand[i].iv)) e.flags |= 8;     // floating here: the other game puts its copy on the ground
         e.model = ModelKeyOf(cand[i].iv);
         e.glare = GlareBits(cand[i].iv);
         memcpy(e.pos, RB_GetVec(rb, RB_GetPosition), 12);
@@ -1055,4 +1121,35 @@ std::string Game::DebugSpawnCop() {
     DebugSpawnCopImpl(buf, sizeof(buf));
     LOG("DebugSpawnCop: %s", buf);
     return buf;
+}
+
+// Test 'ground': our car and every AI car - physics mode, height above our ground (log), counts (reply).
+static bool DebugGroundScan(int& cars, int& emulated, int& noGround) {
+    __try {
+        void* me = LocalVehicle();
+        for (int list : { VL_PLAYERS, VL_AIRACERS, VL_AICOPS, VL_AITRAFFIC }) {
+            void** b = nullptr;
+            int cnt = ListSize(list, &b);
+            for (int i = 0; i < cnt; ++i) {
+                void* t = ListGet(list, i);
+                void* rb = t ? RigidBodyOf(t) : nullptr;
+                if (!rb) continue;
+                const float* p = RB_GetVec(rb, RB_GetPosition);
+                float gy = 0; bool have = GroundHeightAt(p, gy);
+                int mode = VTable(t) == 0x8AA828 ? VCall<int(__thiscall*)(void*)>(t, 14)(t) : -1;
+                ++cars; if (mode == 2) ++emulated; if (!have) ++noGround;
+                LOG("Ground: %s%s list %d mode %d y %.2f, %s%.2f m above our ground%s", t == me ? "OUR CAR " : "", IsMirrorCar(t) ? "copy " : "",
+                    list, mode, p[1], have ? "" : "(no ground) ", have ? p[1] - gy : 0.f, list == VL_PLAYERS && t != me ? " (the other player)" : "");
+            }
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    return true;
+}
+std::string Game::DebugGround() {
+    if (!g_ok || GameFlowState() != 6) return "not in game";
+    int cars = 0, emulated = 0, noGround = 0;
+    if (!DebugGroundScan(cars, emulated, noGround)) return "exception";
+    char r[128];
+    sprintf_s(r, "%d car(s): %d in emulated physics, %d without ground under them (details in the log)", cars, emulated, noGround);
+    return r;
 }

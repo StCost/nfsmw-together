@@ -36,7 +36,9 @@ namespace Game {
     void CoopRulesTick(bool connected);
     void PauseRuleTick(bool connected);
     std::string ToggleAutopilot();
-    bool ShowChyron(const char* title, const char* line2, const char* line3);   // the game's song-title banner with our text
+    bool ShowChyron(const char* title, const char* line2, const char* line3);
+    void QueueNotice(const std::string& text, bool warn);   // centre of the screen, orange when warn (boot.inl)
+    void NoticeTick();                  // shows the queued notices (every frame)   // the game's song-title banner with our text
     void ChyronTick();                  // keeps our banner up for [UI] NoticeSeconds (every frame)
     bool CoopAllowed();
     bool InstallNoSlowMotion();
@@ -78,6 +80,7 @@ namespace Game {
     bool InstallSharedMilestones();     // [Career] SharedMilestones (milestone.inl)
     void MilestoneTick(bool linked);    // find our completions, send them, apply the other player's
     std::string TakeMilestoneNotice();  // "milestone - it counts for you too" once after one was applied here
+    std::string DebugGround();                      // test: ground height / physics mode of our car and the AI cars
     std::string DebugMilestones(const char* arg);   // test: "" list / "milestone" / "speedtrap" complete the first open one
     bool InstallCatchUp();              // AI catch-up measured against the leading human
     bool InstallCoopWin();              // shared wins
