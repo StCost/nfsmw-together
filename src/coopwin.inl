@@ -336,6 +336,17 @@ static void RamSafe(char* out, size_t n, bool cop) {
         float zero[3] = { 0, 0, 0 };
         if (len > 30.f) {
             float park[3] = { hp[0] - dx * 25.f, hp[1] + 0.3f, hp[2] - dz * 25.f };
+            // A car put on ground the game hasn't loaded is moved back to its old road a moment later
+            // (seen in two-PC tests): load the world there first (as `tp`), park on the next `ram`.
+            static float loadAt[3] = { 1e9f, 1e9f, 1e9f }; static DWORD loadedAt = 0;
+            bool loaded = Dist(loadAt, park) < 50.f && GetTickCount() - loadedAt >= 3000 && GetTickCount() - loadedAt < 60000;
+            StreamHoldAt(park, 30000);
+            if (!loaded) {
+                memcpy(loadAt, park, 12); loadedAt = GetTickCount();
+                sprintf_s(out, n, "loading the world next to %s - send ram%s again in 5 s", cop ? "their cop" : "the other player", cop ? " cop" : "");
+                return;
+            }
+            loadedAt = 0;
             RB_SetVec(me, RB_SetPosition, park); RB_SetVec(me, RB_SetLinearVelocity, zero); RB_SetVec(me, RB_SetAngularVelocity, zero);
             sprintf_s(out, n, cop ? "parked 25 m from their cop - send ram cop again in 5 s" : "parked 25 m from the other player - send ram again in 5 s");
             return;

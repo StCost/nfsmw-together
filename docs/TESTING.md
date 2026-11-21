@@ -39,7 +39,7 @@ second, deletes it and logs `Command '<text>': <result>`. This works with the ga
 | `skipnis` | press "skip" on the current cutscene |
 | `story` / `story <movie>` | log the story-scene state (movie, scene hash, the other player's scene, hold, rival number) / play a story movie over the world here as the career would, e.g. `story storyfmv_pin11`, `story blacklist_15` |
 | `pursuit` / `uncop` | start a pursuit on you / remove all police cars |
-| `ram` | first call: park 25 m from the other car. Second call (5 s later): hit it at 90 km/h |
+| `ram` | from far away: the first call loads the world next to the other car, the second (5 s later) parks 25 m from it, the third (5 s later) hits it at 90 km/h. Closer than 30 m: hit at once |
 | `ram cop` | the same against the nearest of the other player's police cars shown here |
 | `pos` | log own position, speed and damage |
 | `tp <x> <y> <z>` | move your car there (numbers as `pos` prints them). The first call loads the world at that spot; send the same `tp` again about 5 s later to move. Handy to reach a marker the autopilot won't drive to |
