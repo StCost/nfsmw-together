@@ -187,6 +187,8 @@ struct NetStats {
     std::string peerAddr;
     int         pingMs = -1;
     uint32_t    lastRecvTick = 0;
+    uint32_t    connectedTick = 0;      // when this connection began
+    uint32_t    peerHearsUsTick = 0;    // last ping / pong from the peer: it only pings while it hears us
     uint32_t    packetsIn = 0, packetsOut = 0;
 };
 

@@ -490,7 +490,11 @@ static void ApplyCarDamage(void* iv, const CarState& s) {
     if (!g_cfg.syncDamage) return;
     if (uint8_t* dmg = (uint8_t*)Find(iv, 0x405000)) {
         uint32_t& z = *(uint32_t*)(dmg + 0x4C);
-        if (z != (s.damageZones & 0x3FFFFFFF)) { z = s.damageZones & 0x3FFFFFFF; LOG("Ghost: damage zones now %08X", z); }
+        if (z != (s.damageZones & 0x3FFFFFFF)) {
+            z = s.damageZones & 0x3FFFFFFF;
+            static uint32_t logged = 0xFFFFFFFF;                      // the game may reset it: log only new values
+            if (z != logged) { logged = z; LOG("Ghost: damage zones now %08X", z); }
+        }
     }
     if (uint8_t* dv = (uint8_t*)Find(iv, 0x668440)) {
         uint32_t& l = *(uint32_t*)(dv + 0x5C);

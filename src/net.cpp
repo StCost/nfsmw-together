@@ -180,6 +180,7 @@ namespace {
             g_ringCount = 0;
             g_latest.valid = g_prev.valid = false;
             g_stats.peerAddr = AddrToStr(from);
+            g_stats.connectedTick = Tick32(); g_stats.peerHearsUsTick = 0;
             LOG("Connected to peer %s", g_stats.peerAddr.c_str());
         }
 
@@ -200,6 +201,7 @@ namespace {
         }
         case PKT_PING: {
             if (len < (int)sizeof(PingPacket)) return;
+            g_stats.peerHearsUsTick = Tick32();     // the peer pings only while it receives us
             PingPacket pong{};
             FillHeader(pong.h, PKT_PONG);
             pong.echoTimeMs = h->timeMs;
@@ -211,6 +213,7 @@ namespace {
             const PingPacket* p = (const PingPacket*)buf;
             int rtt = (int)(NowMs32() - p->echoTimeMs);
             if (rtt < 0 || rtt > 60000) break;   // not an echo of one of our pings
+            g_stats.peerHearsUsTick = Tick32();     // our ping reached them
             g_stats.pingMs = (g_stats.pingMs < 0) ? rtt : (g_stats.pingMs * 3 + rtt) / 4;
             break;
         }

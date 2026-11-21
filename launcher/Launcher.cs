@@ -250,6 +250,12 @@ class LauncherForm : Form {
         ini.Click += (s, e) => OpenFile(Ini.Path);
         btnRow.Controls.Add(log); btnRow.Controls.Add(ini);
         sp.Controls.Add(btnRow);
+        var fwRow = new BgPanel { Size = new Size(W - 24, 36), Margin = new Padding(0, 4, 0, 0) };
+        var fw = new GameButton(); StyleButton(fw, "Allow through firewall", false); fw.SetBounds(0, 0, W - 24, 32);
+        fw.Click += (s, e) => AllowFirewall();
+        tip.SetToolTip(fw, "Lets the other player's game reach yours: adds a Windows Firewall rule for speed.exe and the UDP port. Windows asks for admin rights once. Needed when one of you can't see the other.");
+        fwRow.Controls.Add(fw);
+        sp.Controls.Add(fwRow);
         body.Controls.Add(sp);
 
         AcceptButton = play;
@@ -294,6 +300,19 @@ class LauncherForm : Form {
                 .Select(a => a.Address.ToString()).Distinct().ToArray();
             return list.Length > 0 ? string.Join(", ", list) : "?";
         } catch { return "?"; }
+    }
+
+    void AllowFirewall() {
+        int p; if (!int.TryParse(port.Text.Trim(), out p) || p < 1 || p > 65535) p = 47555;
+        string exe = Path.Combine(gameDir, "speed.exe").Replace("'", "''");   // PowerShell single-quoted string
+        string cmd = "Remove-NetFirewallRule -DisplayName 'NFS MW Together*' -ErrorAction SilentlyContinue; " +
+                     "New-NetFirewallRule -DisplayName 'NFS MW Together (game)' -Direction Inbound -Program '" + exe + "' -Action Allow -Profile Any | Out-Null; " +
+                     "New-NetFirewallRule -DisplayName 'NFS MW Together (UDP " + p + ")' -Direction Inbound -Protocol UDP -LocalPort " + p + " -Action Allow -Profile Any | Out-Null";
+        try {
+            var psi = new ProcessStartInfo("powershell.exe", "-NoProfile -WindowStyle Hidden -Command \"" + cmd + "\"") { Verb = "runas", UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden };
+            var pr = Process.Start(psi); pr.WaitForExit(20000);
+            status.Text = pr.ExitCode == 0 ? "Firewall: the game and UDP " + p + " are allowed now." : "Firewall rule failed (code " + pr.ExitCode + ").";
+        } catch (Exception ex) { status.Text = "Firewall not changed: " + ex.Message; }
     }
 
     void OpenFile(string p) { try { if (File.Exists(p)) Process.Start("notepad.exe", "\"" + p + "\""); else status.Text = "Not found yet: " + p; } catch (Exception ex) { status.Text = ex.Message; } }
