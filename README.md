@@ -38,7 +38,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - The same version of the mod on both PCs.
 - LAN network, or a VPN like Hamachi, Radmin VPN or ZeroTier,
   or UDP port 47555 forwarded to the host.
-- If one of you can't see the other, a firewall is blocking it: press **Allow through firewall** in the launcher's settings on that PC (Windows asks for admin rights once). The game also shows a notice when only one side receives the other.
+- If one of you can't see the other, a firewall or another VPN (e.g. Surfshark) blocks it: allow UDP 47555 for `speed.exe` on that PC, or pause the other VPN. The game shows a notice when only one side receives the other.
 
 
 </details>

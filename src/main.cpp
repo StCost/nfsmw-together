@@ -284,14 +284,14 @@ namespace {
                 else if (!toldOneWay && now - st.connectedTick > 10000 && now - st.peerHearsUsTick > 10000) {
                     toldOneWay = true;
                     std::string who = st.peerName.empty() ? std::string("The other player") : st.peerName;
-                    Toast(who + " doesn't receive your game - allow UDP " + std::to_string(g_cfg.port) + " in the firewall on their PC (launcher: Allow through firewall)");
+                    Toast(who + " doesn't receive your game - allow UDP " + std::to_string(g_cfg.port) + " in the firewall on their PC");
                     LOG("Net: one-way - we receive the other player, they don't receive us (their firewall / VPN blocks UDP %d)", g_cfg.port);
                 }
                 if (g_gameOk && Game::GameFlowState() == 6) { if (!inGameSince) inGameSince = now; } else inGameSince = 0;
                 if (st.connected) toldNoAnswer = false;
                 else if (!g_cfg.isHost && !toldNoAnswer && inGameSince && now - inGameSince > 20000) {
                     toldNoAnswer = true;
-                    Toast("No answer from the host - check the host's IP, and allow UDP " + std::to_string(g_cfg.port) + " in the firewall on this PC (launcher: Allow through firewall)");
+                    Toast("No answer from the host - check the host's IP, and allow UDP " + std::to_string(g_cfg.port) + " in the firewall on this PC");
                     LOG("Net: no answer from the host %s - wrong IP, or a firewall blocks UDP %d", g_cfg.peerIp.c_str(), g_cfg.port);
                 }
             }
