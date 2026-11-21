@@ -140,6 +140,13 @@ namespace {
         // the height correction we apply now (follows its target smoothly)
         float    ride = 0; bool rideKnown = false;
         float    groundFix = 0; DWORD groundAt = 0, learnAt = 0;
+        // semi trucks: the owner's states of its trailer (PKT_TRAILER), and our own hitch fixes
+        NetUtil::MotionKey ts[4] = {};
+        int      tn = 0;              // valid trailer keys (newest at tn-1)
+        uint8_t  tflags = 0;          // TRAILER_* of the newest key
+        bool     trailerSnap = false; // just spawned: put our trailer at the hitch once the truck is in place
+        bool     trailerLogged = false;
+        DWORD    trailerFixAt = 0;    // last re-hitch / put-back (at most every 2 s)
     };
     Mirror g_mirrors[48];
     bool   g_trafficNear = false;
@@ -191,6 +198,29 @@ namespace {
         }
     }
 
+    // The owner's trailer states (sent right after its traffic packet, same clock): kept with the
+    // truck's mirror. A truck we have no mirror for yet just loses this one (the next comes in 50 ms).
+    double g_lastTrailerPkt = 0;   // local ms of the host's last trailer packet (newer builds send one with every traffic packet)
+    int    g_trailerKeys = 0;      // statistics
+    void OnTrailerPacket(const TrailerEntry* e, int count, double sendMs) {
+        g_lastTrailerPkt = Net::LocalClockMs();
+        for (int i = 0; i < count; ++i) {
+            if (!NetUtil::TrafficIdAccepted(e[i].id, g_cfg.isHost)) continue;
+            Mirror* m = FindMirror(e[i].id);
+            if (!m || m->racer) continue;
+            NetUtil::MotionKey k;
+            k.t = sendMs;
+            memcpy(k.pos, e[i].pos, 12); memcpy(k.rot, e[i].rot, 16);
+            memcpy(k.linVel, e[i].linVel, 12); memcpy(k.angVel, e[i].angVel, 12);
+            if (NetUtil::PushMotionKey(m->ts, m->tn, 4, k)) { m->tflags = e[i].flags; ++g_trailerKeys; }
+        }
+    }
+    // The host sends trailer packets (a newer build): then a host car without trailer data has none.
+    bool HostSendsTrailers() {
+        double age = Net::LocalClockMs() - g_lastTrailerPkt;
+        return !g_cfg.isHost && g_lastTrailerPkt > 0 && age >= 0 && age < 3000;
+    }
+
     // GRacerInfo of a car in the current race (GRaceStatus::GetRacerInfo(ISimable*)), or null
     void* RacerInfoOf(void* iv) {
         void* rs = nullptr;
@@ -206,6 +236,7 @@ namespace {
         if (m.racer) { if (m.iv && (!m.wid || WorldIdOf(m.iv) == m.wid)) RestoreAI(m.iv); }   // our own racer: give it its AI back
         else if (m.bound) {}                                  // our own traffic car: it just drives on
         else if (m.iv && ListContains(-1, m.iv)) KillVehicle(m.iv);   // (a car the game deleted was already dropped by g_onMirrorRemoved)
+                                                              // a truck's destructor (0x6B7E00) removes its trailer too: never Kill the trailer ourselves
         m = Mirror{};
     }
 
@@ -315,6 +346,101 @@ namespace {
         RB_SetVec(rb, RB_SetLinearVelocity, vel);
         RB_SetVec(rb, RB_SetAngularVelocity, av);
         GroundMirror(m, rb, pos, vel);
+    }
+
+    // ---- semi truck trailers (all verified in speed.exe v1.3) -------------------------------------
+    // A truck's trailer is built by the truck itself: its rigid-body behaviour "RBTractor" (factory
+    // registered at 0x888020, Construct 0x6B95C0, ctor 0x6B8060) reads the trailer model from the truck's
+    // pvehicle attributes (0x454810, key 0x9A5537FE), builds a "PVehicle" with DRIVER_NONE (0x41CB10),
+    // keeps its IVehicle at +0x1A4 and hitches it: SetHitch 0x69B100 makes a joint between the two
+    // "5THWHEEL" collision points (0x6718F0 -> 0x48CDD0; the joint list 0x91132C is solved by position
+    // each physics step, 0x48C910 from 0x6B947A) and puts the trailer at the hitch. The trailer is class
+    // TRAILER: only in the lists ALL and TRAILERS (9) (0x67ECA0), never AITRAFFIC - so it was never a
+    // traffic entry, and our copy of a truck (SpawnVehicle with the truck's model) builds its own
+    // trailer. The truck's destructor (0x6B7E00) unhitches and Kill()s its trailer, and its vehicle
+    // cache (+0x19C, OnQuery 0x68BFE0) keeps the game from taking the trailer away for room.
+    // IArticulatedVehicle (handle 0x4040D0) at RBTractor+0x194, vtable 0x8AC9C0: slot 1 GetTrailer
+    // (0x6B7F30, +0x10), 2 SetHitch(bool) (0x69B100), 3 put the trailer at the hitch on the ground
+    // (0x68C080 -> trailer IVehicle::SetVehicleOnGround), 4 IsHitched (0x6B7F40, byte +0x1C).
+    // The traffic manager's cull check (0x410B00) asks the same interface for a car's trailer.
+    constexpr uint32_t H_IArticulated = 0x4040D0;
+    constexpr uintptr_t VT_RBTractor_IArticulated = 0x8AC9C0;
+    void* ArticulatedOf(void* iv) {
+        static int slotsOk = -1;   // the four slots we call hold the functions named above
+        if (slotsOk < 0) {
+            static const uintptr_t want[5] = { 0, 0x6B7F30, 0x69B100, 0x68C080, 0x6B7F40 };
+            slotsOk = 1;
+            for (int s = 1; s <= 4; ++s) { uintptr_t f = 0; if (!Mem::Read(VT_RBTractor_IArticulated + s * 4, f) || f != want[s]) slotsOk = 0; }
+            if (!slotsOk) LOG("Traffic: truck trailer interface doesn't match - trailers are left to the game");
+        }
+        if (!slotsOk || !IsVehicle(iv)) return nullptr;
+        void* a = Find(iv, H_IArticulated);
+        return (a && VTable(a) == VT_RBTractor_IArticulated) ? a : nullptr;
+    }
+    void* TrailerOfArt(void* art) {
+        void* t = VCall<void* (__thiscall*)(void*)>(art, 1)(art);
+        return (IsVehicle(t) && ListContains(-1, t)) ? t : nullptr;
+    }
+    void* TrailerOf(void* iv) { void* a = ArticulatedOf(iv); return a ? TrailerOfArt(a) : nullptr; }
+    bool  TrailerHitched(void* art) { return VCall<bool(__thiscall*)(void*)>(art, 4)(art); }
+    void  SetTrailerHitch(void* art) { VCall<void(__thiscall*)(void*, bool)>(art, 2)(art, true); }   // also puts it at the hitch
+    void  PutTrailerAtHitch(void* art) { VCall<void(__thiscall*)(void*)>(art, 3)(art); }
+
+    int g_trlDriven = 0, g_trlOwnHitch = 0, g_trlRehitched = 0, g_trlPutBack = 0;   // statistics (frames / events)
+    int g_trailerLogs = 0;
+
+    // After DriveMirror: the trailer of our copy of a truck. With the owner's trailer states it is moved
+    // exactly like the truck (same render time, same ground correction), so the hitch joint has nothing
+    // to correct; without them (an older host) the truck's own hitch pulls it, and a trailer that came
+    // off or was left behind is hitched / put back at the hitch.
+    void DriveTrailer(Mirror& m, double renderSendMs) {
+        void* art = ArticulatedOf(m.iv);
+        if (!art) return;
+        void* tr = TrailerOfArt(art);
+        void* trb = RigidBodyOf(tr);
+        void* rb = RigidBodyOf(m.iv);
+        if (!trb || !rb) return;
+        DWORD tick = GetTickCount();
+        bool hitched = TrailerHitched(art);
+        bool fresh = m.n && NetUtil::TrailerDataFresh(m.tn, m.tn ? m.ts[m.tn - 1].t : 0.0, m.s[m.n - 1].sendMs);
+        // (while one of our own cars glides into a host car's place the hitch pulls its trailer along)
+        if (fresh && !m.blendT0) {
+            float pos[3], rot[4], vel[3], av[3];
+            if (!NetUtil::SampleMotion(m.ts, m.tn, renderSendMs, pos, rot, vel, av)) return;
+            pos[1] += m.groundFix;              // the same height correction as its truck
+            RB_SetVec(trb, RB_SetOrientationQuat, rot);
+            RB_SetVec(trb, RB_SetPosition, pos);
+            RB_SetVec(trb, RB_SetLinearVelocity, vel);
+            RB_SetVec(trb, RB_SetAngularVelocity, av);
+            ++g_trlDriven;
+            m.trailerSnap = false;
+            if ((m.tflags & TRAILER_HITCHED) && !hitched && tick - m.trailerFixAt >= 2000) {
+                m.trailerFixAt = tick;
+                SetTrailerHitch(art);
+                ++g_trlRehitched;
+                if (g_trailerLogs < 12) { ++g_trailerLogs; LOG("Traffic: re-hitched the trailer %p of the host's truck %u (%s): %s", tr, (unsigned)m.id, VehName(m.iv), TrailerHitched(art) ? "ok" : "failed"); }
+            }
+            if (!m.trailerLogged && g_trailerLogs < 12) {
+                m.trailerLogged = true; ++g_trailerLogs;
+                LOG("Traffic: the host's truck %u (%s): its trailer %p (%s) follows the host's trailer (hitched there %d, here %d)",
+                    (unsigned)m.id, VehName(m.iv), tr, VehName(tr), (int)(m.tflags & TRAILER_HITCHED), (int)hitched);
+            }
+            return;
+        }
+        ++g_trlOwnHitch;
+        bool lost = NetUtil::TrailerLost(RB_GetVec(rb, RB_GetPosition), RB_GetVec(trb, RB_GetPosition));
+        if (!m.trailerSnap && hitched && !lost) return;
+        if (!m.trailerSnap && tick - m.trailerFixAt < 2000) return;
+        const char* why = m.trailerSnap ? "the truck was just placed" : !hitched ? "it came off" : "it was left behind";
+        m.trailerSnap = false;
+        m.trailerFixAt = tick;
+        if (!hitched) { SetTrailerHitch(art); ++g_trlRehitched; }
+        else { PutTrailerAtHitch(art); ++g_trlPutBack; }
+        if (g_trailerLogs < 12) {
+            ++g_trailerLogs;
+            LOG("Traffic: the trailer %p of the host's truck %u (%s) put back at the hitch (%s; no trailer data from the host%s), hitched now %d",
+                tr, (unsigned)m.id, VehName(m.iv), why, HostSendsTrailers() ? "" : " - an older build?", (int)TrailerHitched(art));
+        }
     }
 
     // host: stable ids for its traffic cars
@@ -482,10 +608,18 @@ bool Game::InstallTrafficHooks() {
             t ? "ok" : "FAIL", cops, (int)g_cfg.trafficNoSpawnNearPlayers);
     }
     Net::OnTraffic = [](const TrafficEntry* e, int count, double sendMs) { if (g_coopLinked) OnTrafficPacket(e, count, sendMs); };
+    Net::OnTrailers = [](const TrailerEntry* e, int count, double sendMs) { if (g_coopLinked) OnTrailerPacket(e, count, sendMs); };
     Net::OnRacerName = &OnRacerName;
     Net::OnCarHit = [](uint16_t id, const float* dv) { if (!g_coopLinked) return; __try { OnCarHitImpl(id, dv); } __except (EXCEPTION_EXECUTE_HANDLER) {} };
     LOG("Traffic: hooked ComputeDensity call (client can suppress its own traffic)");
     return true;
+}
+
+// Which of our cars may show this host car: one with a trailer for a truck pulling one (the host sends
+// its trailer), one without otherwise; anything when the host sends no trailer data (older build).
+static int WantTrailer(const Mirror& m) {
+    if (!HostSendsTrailers()) return -1;
+    return (m.n && NetUtil::TrailerDataFresh(m.tn, m.tn ? m.ts[m.tn - 1].t : 0.0, m.s[m.n - 1].sendMs)) ? 1 : 0;
 }
 
 // A host traffic car shown during a race (client, SharedInRaces): not a cop, not a racer.
@@ -524,6 +658,7 @@ static void BindRaceTraffic() {
         memcpy(cand[nc].pos, RB_GetVec(rb, RB_GetPosition), 12);
         // already following a host car, or touching a player (moving it away would jolt them)
         cand[nc].skip = IsMirrorCar(t) || (lrb && Dist(lp, cand[nc].pos) < 6.f) || (grb && Dist(gp, cand[nc].pos) < 6.f);
+        cand[nc].trailer = TrailerOf(t) != nullptr;
         ++nc;
     }
     if (!nc) return;
@@ -537,7 +672,7 @@ static void BindRaceTraffic() {
             const TrafficEntry& e = m.s[m.n - 1].e;
             // never put a car inside a player (it would fling them): wait until it has moved on
             if ((lrb && Dist(lp, e.pos) < 6.f) || (grb && Dist(gp, e.pos) < 6.f)) continue;
-            int k = NetUtil::PickTrafficPartner(m.model, e.pos, cand, nc, pass == 1);
+            int k = NetUtil::PickTrafficPartner(m.model, e.pos, cand, nc, pass == 1, WantTrailer(m));
             if (k < 0) continue;
             bool inView = viewRule && !NetUtil::MirrorMayAppear(cam, e.pos);
             if (inView && !(Dist(cand[k].pos, e.pos) <= 10.f)) { if (pass == 1) ++g_viewWaiting; continue; }
@@ -608,6 +743,7 @@ static void CollectOwnTraffic(OwnTraffic& o, const float* lp, const float* gp) {
         o.c[o.n].model = ModelKeyOf(t);
         memcpy(o.c[o.n].pos, RB_GetVec(rb, RB_GetPosition), 12);
         o.c[o.n].skip = (lp && Dist(lp, o.c[o.n].pos) < 6.f) || (gp && Dist(gp, o.c[o.n].pos) < 6.f);
+        o.c[o.n].trailer = TrailerOf(t) != nullptr;
         ++o.n;
     }
 }
@@ -628,11 +764,12 @@ static bool AnyCarNear(const float* pos, float r) {
 static bool PlaceHostCar(Mirror& m, const NetUtil::CamView& cam, const float* lp, const float* gp, OwnTraffic& own) {
     const TrafficEntry& e = m.s[m.n - 1].e;
     if (!own.built) CollectOwnTraffic(own, lp, gp);
-    int k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, NetUtil::HANDOVER_OVERLAP_M, NetUtil::HANDOVER_OVERLAP_M);
+    int wantTrailer = WantTrailer(m);
+    int k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, NetUtil::HANDOVER_OVERLAP_M, NetUtil::HANDOVER_OVERLAP_M, wantTrailer);
     const char* how = "in its spot";
     if (k < 0) {
         if (NetUtil::MaySpawnUnseen(cam, e.pos, lp)) return !AnyCarNear(e.pos, NetUtil::HANDOVER_OVERLAP_M);
-        k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, 25.f, 10.f);
+        k = NetUtil::PickTakeoverPartner(m.model, e.pos, own.c, own.n, 25.f, 10.f, wantTrailer);
         how = "nearby, in view";
         if (k < 0) return false;
     }
@@ -659,6 +796,15 @@ static int MaintainMirrors(double now) {
             if (g_groundFixed) LOG("Traffic: %d frame(s) of copies put on the ground (largest correction %.2f m), %d ride height sample(s)",
                                    g_groundFixed, g_groundMaxFix, g_groundLearned - lastLearned);
             last = GetTickCount(); lastLearned = g_groundLearned; g_groundFixed = 0; g_groundMaxFix = 0;
+        }
+    }
+    {   // truck trailers (every 10 s while there are any)
+        static DWORD last = 0;
+        if (GetTickCount() - last > 10000) {
+            if (g_trlDriven || g_trlOwnHitch || g_trlRehitched || g_trlPutBack)
+                LOG("Traffic: trailers - %d frame(s) moved with the host's trailer data, %d frame(s) pulled by our own hitch, %d re-hitched, %d put back at the hitch (%d trailer states received, host sends trailers %d)",
+                    g_trlDriven, g_trlOwnHitch, g_trlRehitched, g_trlPutBack, g_trailerKeys, (int)HostSendsTrailers());
+            last = GetTickCount(); g_trlDriven = g_trlOwnHitch = g_trlRehitched = g_trlPutBack = 0; g_trailerKeys = 0;
         }
     }
     double renderSend = now - Net::PeerClockOffsetMs() - g_cfg.interpDelayMs;
@@ -704,6 +850,7 @@ static int MaintainMirrors(double now) {
             // one of our own traffic cars follows the host's car (bound above): never spawn or kill here
             if (m.iv && !NisActive()) {
                 DriveMirror(m, renderSend);
+                DriveTrailer(m, renderSend);
                 GlareBits(m.iv) = m.s[m.n - 1].e.glare;
             }
             if (m.iv) ++alive;
@@ -769,10 +916,12 @@ static int MaintainMirrors(double now) {
             m.iv = SpawnVehicle(e.model, nullptr, e.pos, dir, g_cfg.trafficMirrorClass);
             ++spawned;
             if (!m.iv) { ++m.fails; LOG("Traffic: mirror spawn of %08X failed (%d)", e.model, m.fails); continue; }
+            m.trailerSnap = true;   // a truck builds its trailer facing our spawn direction: put it at the hitch once the truck is in place
             if (e.flags & 1) LOG("Cops: showing the other player's police car (id %u, model %08X)", (unsigned)m.id, e.model);
         }
         if (m.iv) {
             DriveMirror(m, renderSend);
+            DriveTrailer(m, renderSend);
             GlareBits(m.iv) = m.s[m.n - 1].e.glare;   // lights: brake/head/signals/cop light bar
             ++alive;
         }
@@ -783,7 +932,7 @@ static int MaintainMirrors(double now) {
 }
 
 // Collect our own (non-mirror) cars of the given lists, nearest to `to` first, into a packet.
-static int CollectOwned(std::initializer_list<int> lists, const float* to, TrafficEntry* out, int maxOut) {
+static int CollectOwned(std::initializer_list<int> lists, const float* to, TrafficEntry* out, int maxOut, void** outIv = nullptr) {
     struct C { void* iv; float d; uint8_t flags; } cand[64]; int nc = 0;
     void* me = LocalVehicle();
     for (int list : lists) {
@@ -822,9 +971,33 @@ static int CollectOwned(std::initializer_list<int> lists, const float* to, Traff
         memcpy(e.rot, RB_GetVec(rb, RB_GetOrientation), 16);
         memcpy(e.linVel, RB_GetVec(rb, RB_GetLinearVelocity), 12);
         memcpy(e.angVel, RB_GetVec(rb, RB_GetAngularVelocity), 12);
+        if (outIv) outIv[n] = cand[i].iv;
         ++n;
     }
     return n;
+}
+
+// Host: the trailers of the trucks among the cars just collected (same order, same clock).
+static int CollectTrailers(void* const* ivs, const TrafficEntry* ents, int n, TrailerEntry* out, int maxOut) {
+    int k = 0;
+    for (int i = 0; i < n && k < maxOut; ++i) {
+        void* art = ArticulatedOf(ivs[i]);
+        if (!art) continue;
+        void* tr = TrailerOfArt(art);
+        void* trb = RigidBodyOf(tr);
+        if (!trb) continue;
+        TrailerEntry& t = out[k];
+        t = TrailerEntry{};
+        t.id = ents[i].id;
+        t.flags = (uint8_t)((TrailerHitched(art) ? TRAILER_HITCHED : 0) | (EmulatedPhysics(tr) ? TRAILER_EMULATED : 0));
+        t.model = ModelKeyOf(tr);
+        memcpy(t.pos, RB_GetVec(trb, RB_GetPosition), 12);
+        memcpy(t.rot, RB_GetVec(trb, RB_GetOrientation), 16);
+        memcpy(t.linVel, RB_GetVec(trb, RB_GetLinearVelocity), 12);
+        memcpy(t.angVel, RB_GetVec(trb, RB_GetAngularVelocity), 12);
+        if (NetUtil::ValidTrailerEntry(t)) ++k;    // the receiver drops a whole packet with one bad entry
+    }
+    return k;
 }
 
 static int g_sentCount = 0;
@@ -882,10 +1055,21 @@ static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
             TrafficEntry out[MAX_TRAFFIC_PER_PACKET];
             { static int lastRacers = -1; void** rb_ = nullptr; int nr = inRace ? ListSize(VL_AIRACERS, &rb_) : 0;
               if (nr != lastRacers) { lastRacers = nr; LOG("Race: sending %d racer slot(s) to the client (in race %d)", nr, (int)inRace); } }
+            void* outIv[MAX_TRAFFIC_PER_PACKET] = {};
             g_sentCount = distToPeer <= 450.f
-                ? CollectOwned({ VL_AIRACERS, VL_AICOPS, VL_AITRAFFIC }, peer.s.pos, out, MAX_TRAFFIC_PER_PACKET)
-                : CollectOwned({ VL_AIRACERS }, peer.s.pos, out, MAX_TRAFFIC_PER_PACKET);
-            Net::SendTraffic(out, g_sentCount, Game::SimTimeSec());
+                ? CollectOwned({ VL_AIRACERS, VL_AICOPS, VL_AITRAFFIC }, peer.s.pos, out, MAX_TRAFFIC_PER_PACKET, outIv)
+                : CollectOwned({ VL_AIRACERS }, peer.s.pos, out, MAX_TRAFFIC_PER_PACKET, outIv);
+            float simT = Game::SimTimeSec();
+            Net::SendTraffic(out, g_sentCount, simT);
+            // the trailers of the trucks in it (sent every time, also empty: tells the client we send them)
+            TrailerEntry trl[MAX_TRAILERS_PER_PACKET];
+            int nt = CollectTrailers(outIv, out, g_sentCount, trl, MAX_TRAILERS_PER_PACKET);
+            Net::SendTrailers(trl, nt, simT);
+            static int lastTrailers = -1;
+            if ((nt > 0) != (lastTrailers > 0) || lastTrailers < 0) {
+                lastTrailers = nt;
+                LOG("Traffic: %d truck trailer(s) sent with the traffic", nt);
+            }
         }
         // opponents' names, every 2 s while racing (the client shows the same names)
         static double nextNames = 0;

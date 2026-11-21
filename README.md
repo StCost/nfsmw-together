@@ -104,6 +104,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Cops may switch to chasing the other player when you're both being chased (?)
 - [x] Traffic cars near the other player keep full physics instead of moving at reducing quality
 - [x] The other player's traffic, cops and race opponents no longer float above the road (or sink into it) on your screen: a car their game runs in its cheap physics mode (no world loaded under it there) is put on your road surface, smoothly (?)
+- [x] Semi trucks of the other player's traffic keep their trailers on your screen: the trailer follows the truck exactly as on their PC instead of falling off and lying on the road (?)
 - [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC
 - [x] Pause menu and world map don't pause the time while you're connected
 - [x] No speedbreaker in co-op (slow motion can't work for two people)
@@ -242,7 +243,7 @@ The code is in `src/`:
 | File | What |
 |---|---|
 | `main.cpp` | frame loop, hotkeys, overlay text, start-up patches |
-| `net.*` | UDP protocol (hello, state, car info, traffic, events, roster, restart, keep-alive) |
+| `net.*` | UDP protocol (hello, state, car info, traffic, truck trailers, events, roster, restart, keep-alive) |
 | `netutil.h` | pure helpers: interpolation maths, traffic ids, race traffic binding, traffic handover rules (camera view, when a car may appear or go), name limits, validation of received numbers |
 | `game.cpp` | vehicles, spawning, the other player's car (ghost), race integration, autopilot |
 | `traffic.inl` | traffic, cop and race-opponent mirroring |

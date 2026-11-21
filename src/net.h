@@ -28,6 +28,7 @@ enum PacketType : uint16_t {
     PKT_HIT     = 17,   // "my car just lost this much velocity hitting yours" (momentum for the car that was hit)   // host -> client: "I keep no save for you"
     PKT_FOLLOW  = 22,   // "I was moved to a Blacklist pursuit (milestone / bounty) here - come along" (older builds ignore it)
     PKT_MILESTONE = 21, // "I completed this milestone / speed trap" ([Career] SharedMilestones; older builds ignore it)
+    PKT_TRAILER = 23,   // the trailers of the trucks in the PKT_TRAFFIC sent just before (older builds ignore it)
 };
 
 struct PacketHeader {
@@ -212,6 +213,32 @@ struct TrafficPacket {
     float    simTime;     // host simulation clock (s) for all entries
     TrafficEntry e[MAX_TRAFFIC_PER_PACKET];
 };
+// The trailer of a semi truck in the owner's PKT_TRAFFIC (a trailer is its own car in the game, built
+// and hitched by the truck itself, so it is never a traffic entry of its own). Same clock as the traffic
+// packet; the receiver drives its own copy's trailer with it.
+struct TrailerEntry {
+    uint16_t id;          // TrafficEntry id of the truck pulling it
+    uint8_t  flags;       // TRAILER_* bits below
+    uint8_t  pad;
+    uint32_t model;       // the trailer's model key (informational)
+    float    pos[3];
+    float    rot[4];
+    float    linVel[3];
+    float    angVel[3];
+};
+enum : uint8_t {
+    TRAILER_HITCHED  = 1,   // hitched to its truck on the owner's PC
+    TRAILER_EMULATED = 2,   // in the emulated physics mode there (height from the road path)
+    TRAILER_KNOWN_BITS = 3,
+};
+constexpr int MAX_TRAILERS_PER_PACKET = 8;
+struct TrailerPacket {
+    PacketHeader h;
+    uint8_t  count;
+    uint8_t  pad[3];
+    float    simTime;     // the same clock value as the traffic packet it belongs to
+    TrailerEntry e[MAX_TRAILERS_PER_PACKET];
+};
 #pragma pack(pop)
 
 constexpr uint32_t COOP_MAGIC   = 0x4F43574D; // "MWCO"
@@ -257,6 +284,8 @@ namespace Net {
     extern double (*LocalClockMs)();
     // set by the game layer: called for every received traffic packet (sender time in ms)
     extern void (*OnTraffic)(const TrafficEntry* e, int count, double sendMs);
+    void   SendTrailers(const TrailerEntry* e, int count, float simTime);
+    extern void (*OnTrailers)(const TrailerEntry* e, int count, double sendMs);
     void SendEvent(uint32_t eventHash, const char* eventId);
     extern void (*OnEvent)(uint32_t eventHash, const char* eventId);
     void SendRoster(const RosterPacket& p);                 // header is filled in here; sent 3x

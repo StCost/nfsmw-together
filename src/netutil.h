@@ -37,14 +37,18 @@ namespace NetUtil {
     // Instead each host traffic car is bound to one of the client's own traffic cars, which then
     // follows the host's car. A candidate is one of the client's own traffic cars; `skip` marks the
     // ones that may not be taken (already bound, too close to a player, ...).
-    struct TrafficCandidate { uint32_t model; float pos[3]; bool skip; };
+    struct TrafficCandidate { uint32_t model; float pos[3]; bool skip; bool trailer = false; };   // trailer: pulls one (semi truck)
+    // A truck with a trailer is only shown by a car with a trailer and the other way round.
+    // want: 1 = with, 0 = without, -1 = not known (anything goes).
+    inline bool TrailerMatches(int want, bool has) { return want < 0 || (want != 0) == has; }
     // Index of the best partner for a host car of `model` at `pos`: a car of the same model first
     // (nearest of those), otherwise the nearest car of any model when `anyModel`. -1 if none.
-    inline int PickTrafficPartner(uint32_t model, const float* pos, const TrafficCandidate* c, int n, bool anyModel) {
+    // wantTrailer: see TrailerMatches.
+    inline int PickTrafficPartner(uint32_t model, const float* pos, const TrafficCandidate* c, int n, bool anyModel, int wantTrailer = -1) {
         int best = -1, bestAny = -1;
         float bestD = 0, bestAnyD = 0;
         for (int i = 0; i < n; ++i) {
-            if (c[i].skip) continue;
+            if (c[i].skip || !TrailerMatches(wantTrailer, c[i].trailer)) continue;
             float dx = c[i].pos[0] - pos[0], dy = c[i].pos[1] - pos[1], dz = c[i].pos[2] - pos[2];
             float d = dx * dx + dy * dy + dz * dz;
             if (!(d == d) || d > 150.f * 150.f) continue;                      // NaN, or too far to jump in unnoticed
@@ -101,11 +105,11 @@ namespace NetUtil {
     }
     // A host car whose spot is in view can take over one of our own cars instead: one of the same model
     // within sameM, else any model within anyM (the car jumps that far: keep it short). -1 if none.
-    inline int PickTakeoverPartner(uint32_t model, const float* pos, const TrafficCandidate* c, int n, float sameM, float anyM) {
+    inline int PickTakeoverPartner(uint32_t model, const float* pos, const TrafficCandidate* c, int n, float sameM, float anyM, int wantTrailer = -1) {
         int best = -1, bestAny = -1;
         float bestD = 0, bestAnyD = 0;
         for (int i = 0; i < n; ++i) {
-            if (c[i].skip) continue;
+            if (c[i].skip || !TrailerMatches(wantTrailer, c[i].trailer)) continue;
             float d = Dist3(c[i].pos, pos);
             if (!(d == d)) continue;
             if (c[i].model == model && d <= sameM && (best < 0 || d < bestD)) { best = i; bestD = d; }
@@ -245,5 +249,68 @@ namespace NetUtil {
     }
     inline bool ValidTrafficEntry(const TrafficEntry& e) {
         return ValidMotion(e.pos, e.rot, e.linVel, e.angVel);
+    }
+    inline bool ValidTrailerEntry(const TrailerEntry& e) {
+        return !(e.flags & ~TRAILER_KNOWN_BITS) && ValidMotion(e.pos, e.rot, e.linVel, e.angVel);
+    }
+
+    // ---- semi truck trailers ------------------------------------------------------------------
+    // A trailer is a car of its own that its truck builds and hitches (RBTractor). Our copy of the
+    // other game's truck builds its own trailer; we move that trailer with the owner's trailer states
+    // (PKT_TRAILER), interpolated exactly like the truck itself.
+    struct MotionKey { double t; float pos[3], rot[4], linVel[3], angVel[3]; };
+    // Append a key (time t in the sender's clock) to a ring of `cap`, oldest dropped when full. A key
+    // not newer than the newest one is a late / duplicate packet: false, nothing changes.
+    inline bool PushMotionKey(MotionKey* ring, int& n, int cap, const MotionKey& k) {
+        if (n < 0 || n > cap || cap <= 0) n = 0;
+        if (n && !(k.t > ring[n - 1].t)) return false;
+        if (n == cap) { memmove(&ring[0], &ring[1], (cap - 1) * sizeof(MotionKey)); n = cap - 1; }
+        ring[n++] = k;
+        return true;
+    }
+    // The motion at `renderMs` (sender clock), the way traffic copies are driven: Hermite between the
+    // two keys around it, else the newest key moved on by its velocity for at most 250 ms (older than
+    // that: held still, velocities 0 - the owner's game is paused). False when there are no keys.
+    inline bool SampleMotion(const MotionKey* k, int n, double renderMs, float* pos, float* rot, float* vel, float* av) {
+        if (!k || n <= 0) return false;
+        const MotionKey* a = nullptr; const MotionKey* b = nullptr;
+        for (int i = n - 1; i >= 0; --i)
+            if (k[i].t <= renderMs) { a = &k[i]; b = (i + 1 < n) ? &k[i + 1] : nullptr; break; }
+        if (a && b) {
+            double span = b->t - a->t;
+            float u = span > 0 ? (float)((renderMs - a->t) / span) : 1.f;
+            float dt = (float)(span / 1000.0);
+            for (int i = 0; i < 3; ++i) {
+                pos[i] = Hermite(a->pos[i], a->linVel[i], b->pos[i], b->linVel[i], dt, u);
+                vel[i] = a->linVel[i] + (b->linVel[i] - a->linVel[i]) * u;
+                av[i]  = a->angVel[i] + (b->angVel[i] - a->angVel[i]) * u;
+            }
+            NlerpQ(a->rot, b->rot, u, rot);
+            return true;
+        }
+        const MotionKey& l = k[n - 1];
+        float ex = (float)((renderMs - l.t) / 1000.0);
+        if (ex < 0) ex = 0;
+        bool stale = ex > 0.25f;
+        if (ex > 0.25f) ex = 0.25f;
+        for (int i = 0; i < 3; ++i) {
+            pos[i] = l.pos[i] + l.linVel[i] * ex;
+            vel[i] = stale ? 0.f : l.linVel[i];
+            av[i]  = stale ? 0.f : l.angVel[i];
+        }
+        memcpy(rot, l.rot, 16);
+        return true;
+    }
+    // The owner's trailer states for one truck count while the newest is younger than this (sender
+    // clock vs the newest traffic packet of that truck); else the truck's own hitch pulls our trailer.
+    constexpr double TRAILER_FRESH_MS = 1000.0;
+    inline bool TrailerDataFresh(int nKeys, double newestTrailerMs, double newestTruckMs) {
+        return nKeys > 0 && newestTruckMs - newestTrailerMs <= TRAILER_FRESH_MS;
+    }
+    // A hitched trailer's centre is at most ~10 m from its truck's centre (trailer ~13 m long, hitched
+    // over the truck's rear axle). Farther (or NaN) = it came off / was left behind: put it back.
+    constexpr float TRAILER_LOST_M = 16.f;
+    inline bool TrailerLost(const float* truckPos, const float* trailerPos) {
+        return !(Dist3(truckPos, trailerPos) <= TRAILER_LOST_M);
     }
 }

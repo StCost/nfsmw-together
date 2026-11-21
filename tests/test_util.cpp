@@ -423,3 +423,84 @@ TEST(util_take_peer_slot_only_when_sharing_a_slot) {
     CHECK(!ShouldTakePeerSlot(me, nan, peerSame, 0.f, slot));
     CHECK(!ShouldTakePeerSlot(me, 0.f, peerSame, 0.f, bad));
 }
+
+// ---- truck trailers -----------------------------------------------------------------------------
+static MotionKey Key(double t, float x, float vx) {
+    MotionKey k{};
+    k.t = t; k.pos[0] = x; k.rot[3] = 1.f; k.linVel[0] = vx; k.angVel[1] = 0.5f;
+    return k;
+}
+
+TEST(util_trailer_motion_ring) {
+    MotionKey ring[4]; int n = 0;
+    CHECK(PushMotionKey(ring, n, 4, Key(100, 0, 0)));
+    CHECK(!PushMotionKey(ring, n, 4, Key(100, 1, 0)));   // duplicate time
+    CHECK(!PushMotionKey(ring, n, 4, Key(50, 1, 0)));    // late packet
+    CHECK_EQ(n, 1);
+    for (int i = 1; i <= 5; ++i) CHECK(PushMotionKey(ring, n, 4, Key(100 + 50.0 * i, (float)i, 0)));
+    CHECK_EQ(n, 4);                                       // full: the oldest went
+    CHECK_NEAR(ring[0].t, 200, 1e-9);
+    CHECK_NEAR(ring[3].t, 350, 1e-9);
+    int bogus = 99;                                       // a broken count is reset, not used as an index
+    CHECK(PushMotionKey(ring, bogus, 4, Key(1, 0, 0)));
+    CHECK_EQ(bogus, 1);
+}
+
+TEST(util_trailer_sample_motion) {
+    float p[3], q[4], v[3], w[3];
+    CHECK(!SampleMotion(nullptr, 0, 0, p, q, v, w));
+    MotionKey k[2] = { Key(1000, 0, 10), Key(1100, 1, 10) };   // 10 m/s, 1 m in 100 ms
+    CHECK(SampleMotion(k, 2, 1050, p, q, v, w));
+    CHECK_NEAR(p[0], 0.5, 1e-4);                          // halfway (Hermite with matching velocities = linear)
+    CHECK_NEAR(v[0], 10, 1e-4);
+    CHECK_NEAR(w[1], 0.5, 1e-5);
+    CHECK_NEAR(q[3], 1, 1e-5);
+    CHECK(SampleMotion(k, 2, 1150, p, q, v, w));          // 50 ms past the newest: moved on
+    CHECK_NEAR(p[0], 1.5, 1e-4);
+    CHECK_NEAR(v[0], 10, 1e-4);
+    CHECK(SampleMotion(k, 2, 2000, p, q, v, w));          // long past: at most 250 ms on, then held still
+    CHECK_NEAR(p[0], 3.5, 1e-4);
+    CHECK_NEAR(v[0], 0, 1e-6);
+    CHECK_NEAR(w[1], 0, 1e-6);
+    CHECK(SampleMotion(k, 2, 500, p, q, v, w));           // before the history: the newest, not moved
+    CHECK_NEAR(p[0], 1, 1e-4);
+}
+
+TEST(util_trailer_freshness_and_lost) {
+    CHECK(!TrailerDataFresh(0, 0, 0));                    // no keys at all
+    CHECK(TrailerDataFresh(2, 5000, 5000));
+    CHECK(TrailerDataFresh(2, 4000, 5000));
+    CHECK(!TrailerDataFresh(2, 3900, 5000));              // the host stopped sending this trailer
+    float truck[3] = { 0, 0, 0 }, near_[3] = { 8, 0.5f, 3 }, far_[3] = { 20, 0, 0 };
+    float nan_[3] = { std::numeric_limits<float>::quiet_NaN(), 0, 0 };
+    CHECK(!TrailerLost(truck, near_));
+    CHECK(TrailerLost(truck, far_));
+    CHECK(TrailerLost(truck, nan_));
+}
+
+TEST(util_trailer_partner_match) {
+    CHECK(TrailerMatches(-1, true) && TrailerMatches(-1, false));
+    CHECK(TrailerMatches(1, true) && !TrailerMatches(1, false));
+    CHECK(TrailerMatches(0, false) && !TrailerMatches(0, true));
+    float at[3] = { 0, 0, 0 };
+    TrafficCandidate c[3] = { { 0xA, { 2, 0, 0 }, false, true }, { 0xA, { 5, 0, 0 }, false }, { 0xB, { 1, 0, 0 }, false, true } };
+    CHECK_EQ(PickTrafficPartner(0xA, at, c, 3, false), 0);         // not known: the nearest of the model
+    CHECK_EQ(PickTrafficPartner(0xA, at, c, 3, false, 0), 1);      // a car without a trailer for one without
+    CHECK_EQ(PickTrafficPartner(0xA, at, c, 3, false, 1), 0);
+    CHECK_EQ(PickTrafficPartner(0xC, at, c, 3, true, 0), 1);       // any model, still without a trailer
+    CHECK_EQ(PickTakeoverPartner(0xA, at, c, 3, 30.f, 10.f, 1), 0);
+    CHECK_EQ(PickTakeoverPartner(0xC, at, c, 3, 30.f, 10.f, 1), 2); // any model: the nearest truck
+    CHECK_EQ(PickTakeoverPartner(0xC, at, c, 3, 30.f, 10.f, 0), 1);
+    TrafficCandidate none[1] = { { 0xA, { 1, 0, 0 }, false } };
+    CHECK_EQ(PickTakeoverPartner(0xA, at, none, 1, 30.f, 30.f, 1), -1);  // a truck is never shown by a car without its trailer
+}
+
+TEST(util_trailer_entry_validation) {
+    TrailerEntry e{};
+    e.rot[3] = 1.f; e.flags = TRAILER_HITCHED | TRAILER_EMULATED;
+    CHECK(ValidTrailerEntry(e));
+    TrailerEntry b = e; b.flags = 4; CHECK(!ValidTrailerEntry(b));
+    b = e; b.rot[3] = 0; CHECK(!ValidTrailerEntry(b));
+    b = e; b.linVel[2] = 2e4f; CHECK(!ValidTrailerEntry(b));
+    b = e; b.pos[1] = std::numeric_limits<float>::infinity(); CHECK(!ValidTrailerEntry(b));
+}
