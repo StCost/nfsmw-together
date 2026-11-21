@@ -30,6 +30,7 @@ namespace {
     int         g_ringHead = 0, g_ringCount = 0;
     char        g_peerCarFile[MAX_PATH] = "";
     bool        g_haveLocalCar = false, g_havePeerCar = false;
+    float       g_peerRain = 0, g_peerCloud = 0; uint32_t g_peerWeatherTick = 0;
     uint32_t    g_lastCarSend = 0;
 
 #ifdef MWT_TESTS
@@ -304,6 +305,13 @@ namespace {
             HandleFilePacket(h->type, buf, len);
             break;
         }
+        case PKT_WEATHER: {
+            if (len < (int)sizeof(WeatherPacket) || g_cfg.isHost) return;
+            const WeatherPacket* w = (const WeatherPacket*)buf;
+            if (!std::isfinite(w->rain) || !std::isfinite(w->cloud) || w->rain < -2.f || w->rain > 2.f || w->cloud < -2.f || w->cloud > 2.f) return;
+            g_peerRain = w->rain; g_peerCloud = w->cloud; g_peerWeatherTick = Tick32();
+            break;
+        }
         case PKT_CARHIT: {
             if (len < (int)sizeof(CarHitPacket)) return;
             const CarHitPacket* p = (const CarHitPacket*)buf;
@@ -565,6 +573,19 @@ void Net::SendNisSkip(uint32_t sceneHash) {
     FillHeader(p.h, PKT_NISSKIP);
     p.eventHash = sceneHash;
     for (int i = 0; i < 3; ++i) SendRaw(&p, sizeof(p));
+}
+
+void Net::SendWeather(float rain, float cloud) {
+    if (!g_stats.connected) return;
+    WeatherPacket p{};
+    FillHeader(p.h, PKT_WEATHER);
+    p.rain = rain; p.cloud = cloud;
+    SendRaw(&p, sizeof(p));
+}
+bool Net::PeerWeather(float& rain, float& cloud) {
+    if (!g_stats.connected || !g_peerWeatherTick || Tick32() - g_peerWeatherTick > 3000) return false;
+    rain = g_peerRain; cloud = g_peerCloud;
+    return true;
 }
 
 void Net::SendRestart(uint32_t eventHash, uint32_t seq) {

@@ -304,6 +304,7 @@ namespace {
         { Perf::Scope perfRules(Perf::Rules);
         if (g_netOk && g_gameOk) Game::EventTick(linked);
         if (g_netOk && g_gameOk) Game::CoopRulesTick(linked);
+        if (g_netOk && g_gameOk) Game::WeatherTick(linked);
         if (g_netOk && g_gameOk) Game::PauseRuleTick(linked);
         if (g_gameOk) Game::AutopilotTick();
         if (g_netOk && g_gameOk) Game::NisTick(linked);
