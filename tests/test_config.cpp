@@ -47,6 +47,9 @@ TEST(config_defaults_when_file_is_missing) {
     CHECK(c.uiIntroInput);
     CHECK_EQ(c.uiMenuSpeed, 2);
     CHECK(!c.skipPursuitResults);
+    CHECK(c.gameNotices);
+    CHECK_EQ(c.noticeSeconds, 10);
+    CHECK(c.gamepadHotplug); CHECK(c.keepPadBindings);
     CHECK_EQ(c.syncStoryScenes, 1);
     CHECK(c.sharedPursuits); CHECK(c.noPursuitCams);
     CHECK(c.hideCursor);
@@ -67,7 +70,8 @@ TEST(config_parses_values) {
         "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\nSharedPursuits=0\r\nNoPursuitCams=0\r\n"
         "[Start]\r\nSkipIntro=0\r\nDirectFreeRoam=0\r\nSkipLeaveSafeHouseDialog=0\r\n"
         "[AutoStart]\r\nEnabled=0\r\nTarget=race\r\nDelayMs=10\r\nIntervalMs=20\r\nSequence=ENTER,ENTER\r\n"
-        "[UI]\r\nIntroInput=0\r\nMenuSpeed=3\r\nSkipPursuitResults=1\r\n"
+        "[UI]\r\nIntroInput=0\r\nMenuSpeed=3\r\nSkipPursuitResults=1\r\nNoticeSeconds=15\r\n"
+        "[Input]\r\nGamepadHotplug=0\r\nKeepPadBindings=0\r\n"
         "[Window]\r\nHideCursor=0\r\nStartInBackground=1\r\n"
         "[Debug]\r\nOverlay=1\r\nToggleKey=0x7A\r\nTestKeys=1\r\nAutoPilot=1\r\nPerf=1\r\nTestEvent=1.2.3\r\n");
     CHECK(!c.isHost);
@@ -93,6 +97,8 @@ TEST(config_parses_values) {
     CHECK(!c.uiIntroInput);
     CHECK_EQ(c.uiMenuSpeed, 3);
     CHECK(c.skipPursuitResults);
+    CHECK_EQ(c.noticeSeconds, 15);
+    CHECK(!c.gamepadHotplug); CHECK(!c.keepPadBindings);
     CHECK_EQ(c.syncStoryScenes, 2);
     CHECK(!c.sharedPursuits); CHECK(!c.noPursuitCams);
     CHECK(!c.hideCursor);
@@ -136,6 +142,15 @@ TEST(config_sync_story_scenes_range) {
     CHECK_EQ(LoadText("[Coop]\nSyncStoryScenes=2\n").syncStoryScenes, 2);
     CHECK_EQ(LoadText("[Coop]\nSyncStoryScenes=7\n").syncStoryScenes, 1);     // out of range: the default
     CHECK_EQ(LoadText("[Coop]\nSyncStoryScenes=-1\n").syncStoryScenes, 1);
+}
+
+TEST(config_notice_seconds_range) {
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=2\n").noticeSeconds, 2);
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=60\n").noticeSeconds, 60);
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=1\n").noticeSeconds, 2);
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=0\n").noticeSeconds, 2);
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=600\n").noticeSeconds, 60);
+    CHECK_EQ(LoadText("[UI]\nNoticeSeconds=\n").noticeSeconds, 10);       // empty: the default
 }
 
 TEST(config_ghost_values_are_clamped) {

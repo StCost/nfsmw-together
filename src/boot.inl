@@ -342,6 +342,64 @@ std::string Game::FEAccept(const char* pkg) {
 // pointers (0x8F3C48 / 4C / 50; the screen reads them when it appears) and pushes "EA_Trax.fng" - or
 // replays it if it's already up. It does nothing while *0x8EE348 > 0 (chyrons suppressed, e.g. during
 // a cutscene). The strings must stay valid, so they live in static buffers. Lines 1 and 2 are shown.
+//
+// How long it stays: not a C++ timer. EA_TRAX.fng (GLOBAL\GLOBALB.BUN) has an invisible string object
+// "SEC" (hash 0x545570C6) whose script TIMER (id 0x03C43A20, 6000 FE time units) chains to SEND
+// (0x001C9AC9, 1620 units); SEND's events make the banner slide out and then HIDE it. FE time runs at
+// 1200 units/s (x2 / x3 with [UI] MenuSpeed), so the banner is gone after ~6.4 s, ~3.2 s at MenuSpeed 2.
+// FEScript (from the FNG loader 0x5C3610 and the script update 0x5C19D0): +0x0C length, +0x10 current
+// time (int; finished at length + 1), +0x18 chain-to id, +0x30 id. FEObject +0x54 = current script.
+// To keep our notice up for [UI] NoticeSeconds, the TIMER's time is held short of its end until then;
+// after that the game's own SEND / slide-out runs as usual. If the object or script isn't found, the
+// banner behaves as before.
+namespace {
+    DWORD g_chyronHoldUntil = 0;     // 0 = not holding
+    bool  g_chyronHeld = false;      // the hold engaged at least once for this notice
+
+    void ChyronHoldStart() {
+        int speed = (g_cfg.uiMenuSpeed == 2 || g_cfg.uiMenuSpeed == 3) ? g_cfg.uiMenuSpeed : 1;
+        // after the release, the rest of TIMER (600 units) runs before the slide-out starts
+        DWORD tail = 600u * 1000u / (1200u * (DWORD)speed);
+        DWORD total = (DWORD)g_cfg.noticeSeconds * 1000u;
+        g_chyronHoldUntil = (GetTickCount() + (total > tail ? total - tail : 0)) | 1;
+        g_chyronHeld = false;
+    }
+
+    // 1 = held / running normally, 0 = object not found, -1 = exception
+    int ChyronHoldRaw() {
+        __try {
+            uint8_t* obj = ((uint8_t*(__cdecl*)(const char*, uint32_t))0x5251E0)((const char*)0x897414, 0x545570C6);
+            if (!obj) return 0;
+            uint8_t* scr = *(uint8_t**)(obj + 0x54);
+            if (!scr || *(uint32_t*)(scr + 0x30) != 0x03C43A20) return 1;       // not in TIMER (yet / any more)
+            uint32_t len = *(uint32_t*)(scr + 0x0C);
+            uint32_t hold = len > 1200 ? len - 600 : len / 2;
+            if (*(uint32_t*)(scr + 0x10) > hold) {
+                *(uint32_t*)(scr + 0x10) = hold;
+                if (!g_chyronHeld) { g_chyronHeld = true; LOG("Notice: holding the game banner for %d s", g_cfg.noticeSeconds); }
+            }
+            return 1;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            return -1;
+        }
+    }
+}
+
+void Game::ChyronTick() {
+    if (!g_chyronHoldUntil) return;
+    if ((int)(GetTickCount() - g_chyronHoldUntil) >= 0) {
+        g_chyronHoldUntil = 0;
+        if (!g_chyronHeld) LOG("Notice: the game banner was never held (it ended by itself or was not found)");
+        return;
+    }
+    int r = ChyronHoldRaw();
+    // the package may appear a frame or two after it was summoned: give it a moment before giving up
+    if (r < 0 || (r == 0 && g_cfg.noticeSeconds * 1000 - (int)(g_chyronHoldUntil - GetTickCount()) > 1500)) {
+        LOG("Notice: %s - the banner keeps the game's own timing", r < 0 ? "exception while holding the game banner" : "banner timer object not found");
+        g_chyronHoldUntil = 0;
+    }
+}
+
 bool Game::ShowChyron(const char* title, const char* line2, const char* line3) {
     if (!g_ok) return false;
     int flow = GameFlowState();
@@ -363,7 +421,12 @@ bool Game::ShowChyron(const char* title, const char* line2, const char* line3) {
         if (Mem::Read(0x91D21C, reg) && reg && Mem::Read(0x925B14, now)) {
             uint8_t* pkg = ((uint8_t*(__thiscall*)(void*, const char*))0x585820)(reg, "EA_Trax.fng");
             uint8_t* scr = nullptr;
-            if (pkg && Mem::Read((uintptr_t)pkg + 0x1C, scr) && scr) { DWORD t0 = now - 20001; return Mem::Write((uintptr_t)scr + 0x2C, t0); }
+            if (pkg && Mem::Read((uintptr_t)pkg + 0x1C, scr) && scr) {
+                DWORD t0 = now - 20001;
+                if (!Mem::Write((uintptr_t)scr + 0x2C, t0)) return false;
+                ChyronHoldStart();
+                return true;
+            }
         }
         return false;     // not shown (yet): the caller uses the corner line
     } __except (EXCEPTION_EXECUTE_HANDLER) { LOG("Notice: exception in the game's chyron"); return false; }

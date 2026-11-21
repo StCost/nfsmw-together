@@ -123,6 +123,8 @@ namespace {
         FEScreens::Tick();
         if (g_gameOk) Game::BootTick();
         if (g_gameOk) Game::PursuitResultTick();
+        if (g_gameOk) Pad::Tick(flowNow);
+        if (g_gameOk) Game::ChyronTick();
         // the key-pressing AutoStart is only needed when the direct start is off (or for other targets)
         if (!(g_cfg.directFreeRoam && !_stricmp(g_cfg.autoStartTarget.c_str(), "freeroam"))) AutoStart::Tick(flowNow);
         if (g_gameOk) Game::OnFlow(flowNow);
@@ -402,7 +404,7 @@ namespace {
             std::string ss = g_gameOk ? Game::StoryStatus() : "";
             if (ss != lastStory) { if (!ss.empty()) Toast(ss); lastStory = ss; }
         }
-        bool toastOn = !g_toast.empty() && GetTickCount() - g_toastAt < 10000;
+        bool toastOn = !g_toast.empty() && GetTickCount() - g_toastAt < (DWORD)g_cfg.noticeSeconds * 1000;
         Overlay::SetForceShow(toastOn);
 
         // --- overlay text (rebuild ~5x per second, texture upload is not free) ---
@@ -500,6 +502,7 @@ BOOL APIENTRY DllMain(HMODULE mod, DWORD reason, LPVOID) {
         g_prevForeground = GetForegroundWindow();
         Game::InstallBootPatches();
         InstallCrashDialog();
+        Pad::InstallHooks();               // controller bindings guard (before the game creates its input devices)
         SetUnhandledExceptionFilter([](EXCEPTION_POINTERS* e) -> LONG {
             LOG("CRASH: exception %08X at %p", (unsigned)e->ExceptionRecord->ExceptionCode, e->ExceptionRecord->ExceptionAddress);
             return EXCEPTION_CONTINUE_SEARCH;

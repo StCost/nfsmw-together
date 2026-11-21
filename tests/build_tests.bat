@@ -60,5 +60,5 @@ rem ---- static analysis (report only) -----------------------------------------
 if not exist build\analyze mkdir build\analyze
 cl /nologo /EHsc /std:c++17 /W3 /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS ^
    /analyze /analyze:only /analyze:stacksize 32768 /wd6031 /wd6101 /wd6320 /wd6322 /wd28159 /Fo"build\analyze\\" ^
-   src\main.cpp src\log.cpp src\config.cpp src\net.cpp src\overlay.cpp src\mem.cpp src\game.cpp src\input.cpp
+   src\main.cpp src\log.cpp src\config.cpp src\net.cpp src\overlay.cpp src\mem.cpp src\game.cpp src\input.cpp src\pad.cpp
 exit /b %errorlevel%

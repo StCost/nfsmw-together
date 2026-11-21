@@ -3,6 +3,7 @@
 #include "log.h"
 #include "mem.h"
 #include "config.h"
+#include "input.h"
 #include <cstdint>
 #include <algorithm>
 
@@ -263,6 +264,8 @@ namespace {
             if (logged++ < 4) LOG("Window: closing message %04X (w %08X l %08X) from %p", msg, (unsigned)w, (unsigned)l, _ReturnAddress());
             g_onClose();
         }
+        // A device was plugged in / removed (USB or Bluetooth pad): the hot-plug check runs on the next frames.
+        if (msg == WM_DEVICECHANGE) Pad::OnDeviceChange();
         // Hide only while the game is the active window; a background game window can still get
         // WM_SETCURSOR when the pointer passes over it, and must not hide the user's cursor then.
         if (msg == WM_SETCURSOR && LOWORD(l) == HTCLIENT && g_cfg.hideCursor && GetForegroundWindow() == h) {

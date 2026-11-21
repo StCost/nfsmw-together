@@ -130,8 +130,8 @@ class LauncherForm : Form {
     Label myIps = new Label();
     CheckBox skipIntro = Check("Skip intros"), direct = Check("Quick career start"),
              noSafeHouse = Check("Quick leave the safe house"), pursuitRes = Check("Auto-close pursuit results in free roam"),
-             introInput = Check("Menus respond during animations"), overlay = Check("Show status overlay (F8)"),
-             noPursuitCam = Check("No pursuit start camera");
+             introInput = Check("Menus respond during animations"), padHotplug = Check("Detect gamepads connected while playing"),
+             overlay = Check("Show status overlay (F8)"), noPursuitCam = Check("No pursuit start camera");
     GameButton[] speedBtns = { new GameButton(), new GameButton(), new GameButton() };
     int menuSpeed = 2;
     Label status = new Label { AutoSize = false, ForeColor = Theme.Accent, Font = Theme.Small };
@@ -218,9 +218,10 @@ class LauncherForm : Form {
             "\"Resume Free Roam\" in the safe house starts at once, without the \"are you sure you want to leave?\" question.",
             "After a pursuit in free roam, the result screens (bounty achieved, pursuit summary) close by themselves. Only on this PC. The busted screen is left alone.",
             "Menu buttons react while a menu is still sliding in, so you don't have to wait for the animation.",
+            "A gamepad or wheel you plug in (USB or Bluetooth) while the game is running works right away, and so does one that dropped out and came back. Without this the game only sees controllers that were connected when it started. Your controller bindings are kept.",
             "Shows the mod's status box in the top-left corner of the game: connection, ping and the other player. F8 switches it in game.",
             "While you play together, the camera stays on your car when the cops start a chase, instead of flying over to look at the police car. Playing alone, the game does what it always does." };
-        var checks = new CheckBox[] { skipIntro, direct, noSafeHouse, pursuitRes, introInput, overlay, noPursuitCam };
+        var checks = new CheckBox[] { skipIntro, direct, noSafeHouse, pursuitRes, introInput, padHotplug, overlay, noPursuitCam };
         for (int i = 0; i < checks.Length; ++i) { checks[i].Width = W - 24; sp.Controls.Add(checks[i]); tip.SetToolTip(checks[i], hints[i]); }
         var msRow = new BgPanel { Size = new Size(W - 24, 32), Margin = new Padding(0, 4, 0, 0) };
         msRow.Controls.Add(new Label { Text = "Menu animation speed", AutoSize = true, Location = new Point(0, 6), ForeColor = Theme.Text, BackColor = Color.Transparent, Font = Theme.Label });
@@ -311,6 +312,7 @@ class LauncherForm : Form {
         noSafeHouse.Checked = Ini.GetB("Start", "SkipLeaveSafeHouseDialog", true);
         pursuitRes.Checked = Ini.GetB("UI", "SkipPursuitResults", false);
         introInput.Checked = Ini.GetB("UI", "IntroInput", true);
+        padHotplug.Checked = Ini.GetB("Input", "GamepadHotplug", true);
         overlay.Checked = Ini.GetB("Debug", "Overlay", false);
         noPursuitCam.Checked = Ini.GetB("Coop", "NoPursuitCams", true);
         int ms; if (!int.TryParse(Ini.Get("UI", "MenuSpeed", "2"), out ms)) ms = 2;
@@ -334,6 +336,7 @@ class LauncherForm : Form {
         Ini.SetB("Start", "SkipLeaveSafeHouseDialog", noSafeHouse.Checked);
         Ini.SetB("UI", "SkipPursuitResults", pursuitRes.Checked);
         Ini.SetB("UI", "IntroInput", introInput.Checked);
+        Ini.SetB("Input", "GamepadHotplug", padHotplug.Checked);
         Ini.Set("UI", "MenuSpeed", menuSpeed.ToString());
         Ini.SetB("Debug", "Overlay", overlay.Checked);
         Ini.SetB("Coop", "NoPursuitCams", noPursuitCam.Checked);

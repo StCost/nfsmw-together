@@ -118,6 +118,24 @@ detector hooked)`. While either player is chased, both logs print a status line 
 | Escape together | as above, then C: `uncop` | both `Pursuit: both out of sight - cooldown runs as usual` (or `ours waits for theirs`), both `Pursuit: ours chase -> cooldown` within ~1 s, then both `Pursuit: ours cooldown -> escaped` within ~1 s of each other. If a new cop spots C during the cooldown, both go back: H logs `Pursuit: the other player is still seen` and H's state returns to `chase`. |
 | Off | `SharedPursuits=0` on both | `Pursuit: SharedPursuits=0 - each player has their own heat and pursuit`; none of the lines above; busting or escaping affects only the player chased. |
 | In events | start an event with `event 15.1.1` while chased | no heat / bust / cooldown lines while either player is in the event. |
+## Notices and game controllers
+
+One PC is enough. Keep the log open (`scripts\MWTogether.log`).
+
+| Check | How | Pass |
+|---|---|---|
+| Notice length | free roam, `notice hello` in `MWTogether.cmd` (or a join / leave) | the banner slides in once, stays about `NoticeSeconds` (10 s), then slides out; no second slide-in. Log `Notice: holding the game banner for 10 s`. With `MenuSpeed=1` and `=2` the same length |
+| Notice fallback | as above | no `banner timer object not found` / `exception while holding` lines. If one shows up, the banner has its old length (about 3 s) and the corner line still stays 10 s |
+| Song banner | wait for a new song in free roam | the game's own song banner looks and times as before (we only hold our own notices) |
+| Pad plugged in | start the game with no pad, get to free roam, plug a USB pad in | within about 2 s: `Pad: controller connected: <name> -> added to the game`; the pad drives the car. In the controller options the pad's bindings are shown |
+| Bluetooth pad | as above, switch a paired Bluetooth pad on while playing | same as USB |
+| Unplug + replug | pad connected at start, pull it out, wait 3 s, plug it back | `Pad: controller 0 disconnected (<name>) - removed from the game's list`, then `controller connected ... added`; the pad works again with the same bindings |
+| Wheel force feedback | a force feedback wheel plugged in while playing | `Pad: force feedback slot 0: <name> (format 00000000, coop 00000000)`; the wheel's centering force works in a race |
+| Bindings kept, no pad at start | change a pad binding in Options > Controller, save, quit. Start the game WITHOUT the pad, play until an autosave, quit. Start with the pad | log at the pad-less start `Pad: no controller attached - keeping the profile's controller bindings (made for XXXXXXXX)`; at the last start your changed binding is still there, no `reset to this pad's defaults` line |
+| Bindings kept, pad added later | as above, but plug the pad in during the pad-less session | `Pad: keeping the controller bindings (made for X, this pad X)`; your bindings work at once |
+| Restore defaults still works | Options > Controller > restore defaults | the bindings go back to the defaults, log `controller bindings set to the defaults ... (called from 0051D707)` |
+| Unknown reset | play normally (pause menu, options, reset car, restart a race) | if `Pad: blocked a reset of the controller bindings (called from ...)` shows up, note what you just did: that is a reset the game would have done and the mod stopped |
+| Switches off | `GamepadHotplug=0` | no `Pad: controller ...` lines, a pad plugged in later is ignored (the game's own behaviour) |
 
 ## Story scenes (`SyncStoryScenes`)
 

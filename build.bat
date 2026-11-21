@@ -19,7 +19,7 @@ if defined MWT_VERSION set VERDEF=/DMWT_VERSION=\"%MWT_VERSION%\"
 
 cl /nologo /O2 /MT /EHsc /std:c++17 /W3 /DWIN32_LEAN_AND_MEAN /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS %VERDEF% ^
    /Fo"build\\" /Fd"build\\" ^
-   src\main.cpp src\log.cpp src\config.cpp src\net.cpp src\overlay.cpp src\mem.cpp src\game.cpp src\input.cpp ^
+   src\main.cpp src\log.cpp src\config.cpp src\net.cpp src\overlay.cpp src\mem.cpp src\game.cpp src\input.cpp src\pad.cpp ^
    /LD /Fe"build\MWTogether.asi" ^
    /link /SAFESEH:NO /DYNAMICBASE:NO ws2_32.lib user32.lib gdi32.lib dxguid.lib shell32.lib || exit /b 1
 

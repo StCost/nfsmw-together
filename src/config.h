@@ -25,6 +25,9 @@ struct Config {
     bool        skipLoadComplete = true; // [Start] SkipLoadComplete - confirm the "load complete" screen by itself   // [Start] DirectFreeRoam - load career free roam right after the profile
     bool        skipLeaveSafeHouseDialog = true; // [Start] SkipLeaveSafeHouseDialog
     bool        gameNotices = true;       // [UI] GameNotices - notices in the game's own banner (EA Trax chyron)
+    int         noticeSeconds = 10;       // [UI] NoticeSeconds - how long a notice stays on screen (2..60)
+    bool        gamepadHotplug = true;    // [Input] GamepadHotplug - pick up pads connected while the game runs
+    bool        keepPadBindings = true;   // [Input] KeepPadBindings - starting without the pad keeps its bindings
     bool        skipPursuitResults = false; // [UI] SkipPursuitResults - close the pursuit result screen in free roam
     bool        startInBackground = false; // [Window] StartInBackground - give focus back on start, game muted until clicked
     bool        syncWeather = true;      // [Coop] SyncWeather - the client shows the host's rain
