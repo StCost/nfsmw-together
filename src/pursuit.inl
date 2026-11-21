@@ -277,6 +277,27 @@ static void SharedPursuitTickImpl(bool connected, const Net::Snapshot& peer) {
     void* me = here ? LocalVehicle() : nullptr;
     void* pursuit = me ? PursuitOf(me) : nullptr;
 
+    // ---- the other player's chasing cops spot us too: one of them close to our car starts a pursuit ----
+    if (me && !pursuit) {
+        static DWORD nextSpot = 0;
+        void* myRb = RigidBodyOf(me);
+        if (myRb && (int)(now - nextSpot) >= 0) {
+            const float* mp = RB_GetVec(myRb, RB_GetPosition);
+            for (auto& m : g_mirrors) {
+                if (!m.used || !m.iv || !m.n || !(m.s[m.n - 1].e.flags & 4)) continue;   // a cop in a pursuit there
+                void* rb = RigidBodyOf(m.iv);
+                if (!rb) continue;
+                float d = Dist(RB_GetVec(rb, RB_GetPosition), mp);
+                if (d < 45.f) {
+                    nextSpot = now + 15000;
+                    bool ok = DebugForcePursuitImpl();
+                    LOG("Pursuit: the other player's cop %u spotted us (%.0f m) - %s", (unsigned)m.id, d, ok ? "starting a pursuit on us" : "no cop manager");
+                    break;
+                }
+            }
+        }
+    }
+
     // ---- our own pursuit, as the other game sees it ----
     g_sp.heat100 = 0; g_sp.flags = 0; g_sp.left10 = 0;
     bool busted = false, bailed = false;
