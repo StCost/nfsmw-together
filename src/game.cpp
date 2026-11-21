@@ -1092,6 +1092,16 @@ static void UpdateGhostImpl(const Net::Snapshot& latest, const Net::Snapshot& pr
         const float* lpos = lrbP ? RB_GetVec(lrbP, RB_GetPosition) : nullptr;
         bool peerJump  = haveLast && Dist(lastTarget, s.pos) > 30.f;
         bool localJump = haveLast && lpos && Dist(lastLocal, lpos) > 30.f;
+        // a long jump of the other player (teleported to an event, a milestone pursuit, the safe house):
+        // build their car again at the new place once the world there has streamed in, instead of moving
+        // the old one there (it came out without a model)
+        if (haveLast && Dist(lastTarget, s.pos) > 300.f && g_ghostKind == GK_SPAWNED) {
+            LOG("Ghost: the other player jumped %.0f m - building their car again there", Dist(lastTarget, s.pos));
+            memcpy(lastTarget, s.pos, 12);
+            Game::ReleaseGhost();
+            g_nextSpawnTry = GetTickCount() + 1500;
+            return;
+        }
         if (peerJump || localJump || g_protectHoldReset) {
             holdUntil = GetTickCount() + 3000;
             g_protectHoldReset = false;
