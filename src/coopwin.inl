@@ -250,6 +250,17 @@ std::string Game::DebugPos() { char b[128] = "not in game"; if (g_ok && GameFlow
 namespace {
     struct PctAvg { float sum, cnt; };
     using AvgFn = PctAvg* (__cdecl*)(PctAvg*, int, float, float);
+    // Verified in the exe: 0x4255A0 has this one caller, and every racer AI - the Blacklist rival too -
+    // gets its catch-up only through 0x4293D0 (vtable 0x8923C0; called from 0x42AAD4 and 0x42F1D5): the
+    // gap to the players feeds a PID (0x653E20 on AI+0x7B0), whose output GRaceStatus 0x5FF990 turns into
+    // the AI's skill (AI+0x7B8 / +0x7AC). The rival-only branches there (race flags 0x5FC800 / 0x5FBD90:
+    // the race's own catch-up tables, a higher floor for a boss) only reshape that output; they measure
+    // nothing themselves. The other players-list users in the AI are not about progress (0x428450:
+    // career performance matching to the player's car; 0x42C390 / 0x42F570: cops).
+    // Rival races: the partner's car isn't a racer here, so their own race % (sent with their state,
+    // moved on to now like the standings do) is the measure. A partner whose state drops out for a
+    // moment (a lost packet burst, a menu flicker) keeps counting for 3 s, so the AI never falls back to
+    // waiting for the player behind in between.
     bool LeaderPct(float& out) {
         __try {
             void* mine = RacerInfoOfLocal();
@@ -257,22 +268,40 @@ namespace {
             if (!mine || !Mem::Read((uintptr_t)mine + 0x18, a)) return false;
             const Net::Snapshot& p = Net::Latest();
             void* gri = GhostRacerInfo();
+            uint32_t ev = Game::CurrentEventHash();
             // a partner who already finished is out of the race: the AI goes back to racing just us
-            bool peerRacing = Net::Stats().connected && g_coopLinked && p.valid && p.s.inRace && !p.s.finished &&
-                              p.s.eventHash && p.s.eventHash == Game::CurrentEventHash();
-            if (peerRacing && gri && Mem::Read((uintptr_t)gri + 0x18, b)) {
-                out = b > a ? b : a;
-                static DWORD lastLog = 0;
-                if (GetTickCount() - lastLog > 15000) { lastLog = GetTickCount(); LOG("Race: catch-up measured against %.1f%% (ours %.1f%%, partner %.1f%%)", out, a, b); }
-                return true;
+            bool linked = Net::Stats().connected && g_coopLinked;
+            bool peerRacing = linked && p.valid && p.s.inRace && !p.s.finished && p.s.eventHash && p.s.eventHash == ev;
+            static DWORD lastOk = 0; static uint32_t lastOkEvent = 0; static float lastPeer = 0;
+            DWORD now = GetTickCount();
+            bool peerOk = false;
+            const char* how = "";
+            uint8_t restart = 0; Mem::Read(0x91CF28, restart);   // a restart is pending: no old values
+            if (peerRacing && gri && Mem::Read((uintptr_t)gri + 0x18, b)) { peerOk = true; }   // their racer slot (WritePeerProgress keeps it current)
+            else if (peerRacing && !gri) {                                                                 // rival races: their car isn't a racer here
+                b = p.s.racePct;
+                int ping = Net::Stats().pingMs;
+                Net::RemoteRacePctNow(ping > 0 && ping < 1000 ? ping * 0.5 : 0.0, b);
+                peerOk = true; how = ", rival race";
+            } else if (linked && lastOk && ev && ev == lastOkEvent && now - lastOk < 3000 && !(p.valid && p.s.finished) && !restart) {
+                b = lastPeer; peerOk = true; how = ", partner's last value";                               // a short gap in their state
             }
-            if (peerRacing && !gri) {   // rival races: their car isn't a racer here
-                out = p.s.racePct > a ? p.s.racePct : a;
-                static DWORD lastLog2 = 0;
-                if (GetTickCount() - lastLog2 > 15000) { lastLog2 = GetTickCount(); LOG("Race: catch-up measured against %.1f%% (ours %.1f%%, partner %.1f%%, rival race)", out, a, p.s.racePct); }
-                return true;
+            if (peerOk && peerRacing) { lastOk = now; lastOkEvent = ev; lastPeer = b; }
+            if (!peerOk) {
+                if (linked && ev) {                                                                        // why the partner doesn't count (diagnostics)
+                    static DWORD lastSoloLog = 0;
+                    if (now - lastSoloLog > 15000) {
+                        lastSoloLog = now;
+                        LOG("Race: catch-up measured against us only (ours %.1f%%; partner state %d, in race %d, finished %d, event %08X, ours %08X)",
+                            a, (int)p.valid, (int)p.s.inRace, (int)p.s.finished, p.s.eventHash, ev);
+                    }
+                }
+                return false;                                                                      // solo: leave the game alone
             }
-            return false;                                                                      // solo: leave the game alone
+            NetUtil::CatchUpLeaderPct(a, true, b, out);
+            static DWORD lastLog = 0;
+            if (now - lastLog > 15000) { lastLog = now; LOG("Race: catch-up measured against %.1f%% (ours %.1f%%, partner %.1f%%%s)", out, a, b, how); }
+            return true;
         } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
     PctAvg* __cdecl hk_PlayersPct(PctAvg* out, int list, float s0, float c0) {

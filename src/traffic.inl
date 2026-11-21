@@ -12,6 +12,9 @@
 //  our own traffic cars (traffic AI, adopted by the game's traffic manager) instead of vanishing.
 //  Coming near, our own traffic cars stay until they are off screen, and a host car only appears where
 //  the camera can't see it (or one of our cars in / near its spot takes it over and glides there).
+//  [Traffic] NoSpawnNearPlayers=1 (both sides): our game never builds a new traffic car or cop within
+//  ~60 m in front of the other player (spot checks hooked, see below), and no copy of the other player's
+//  cars is created inside our view within ~60 m (it waits until out of view or farther).
 // ---------------------------------------------------------------------------
 namespace {
     constexpr uintptr_t DensityCallSite  = 0x439BBD;   // call AITrafficManager::ComputeDensity (0x41EC20)
@@ -37,6 +40,71 @@ namespace {
         return true;
     }
     uint32_t& GlareBits(void* iv) { return *(uint32_t*)((uint8_t*)iv + 0x9C); }
+
+    // ---- [Traffic] NoSpawnNearPlayers: no new traffic / cops right in front of the other player ----
+    // The game chooses spots for new cars around its own camera only (all verified in the exe):
+    //  Traffic: AITrafficManager::SpawnTraffic 0x439A10 (from its update 0x439BB0) asks 0x437DC0 for a
+    //   road spot (a WRoadNav at mgr+0xB4; the spot's position is at nav+0x98, game space). 0x437DC0
+    //   tries a spot ahead of each spawn anchor and takes the first one 0x4109C0 (thiscall, const
+    //   Vector3*) doesn't call blocked (true = blocked: cars there); else no traffic car this update.
+    //   The car itself (0x426380: a re-used culled car or a new one) is only made after a spot is found.
+    //  Cops: AICopManager's spot finders (0x42FA40 for SpawnPatrolCar 0x430D90 / 0x430E60, 0x41EED0 for
+    //   pursuit cops from SpawnPursuitCar 0x42EA90, 0x430E60's own two spots) all accept a spot only
+    //   when 0x419FC0 (thiscall, const Vector3*, 4 more args, true = fine; it checks the distance from
+    //   our camera) says so; on false they give up for this try and the cop manager tries again later.
+    // We answer those calls too: a spot close in front of the other player's car is refused as well.
+    // The game then takes another anchor / tries again; nothing is created at the refused spot.
+    constexpr uintptr_t TrafficSpotCallSite = 0x438076, TrafficSpotBlockedFn = 0x4109C0;
+    constexpr uintptr_t CopSpotCallSites[4] = { 0x41F0AF, 0x42FB56, 0x43117A, 0x4313B3 };
+    constexpr uintptr_t CopSpotOkFn = 0x419FC0;
+    int g_noSpawnTraffic = 0, g_noSpawnCops = 0;   // spots refused (logged by TrafficTick when they change)
+    int g_noSpawnLogs = 0;
+
+    // The other player's car as the spawn check sees it: our copy of their car (what we draw, its body
+    // direction and motion), else their latest state. False = no check (not linked, they have no car).
+    bool PeerForSpawnCheck(float pos[3], float dirs[6], int& nDirs) {
+        nDirs = 0;
+        if (!g_cfg.trafficNoSpawnNearPlayers || !g_coopLinked || !Net::Stats().connected) return false;
+        const Net::Snapshot& p = Net::Latest();
+        if (!p.valid || !p.s.hasCar || p.s.gameFlowState != 6) return false;
+        const float* vel = p.s.linVel;
+        float gv[3];
+        if (void* grb = RigidBodyOf(g_ghost)) {
+            memcpy(pos, RB_GetVec(grb, RB_GetPosition), 12);
+            float f[3] = {};
+            VCall<void(__thiscall*)(void*, float*)>(grb, 13 /*GetForwardVector*/)(grb, f);
+            if (NetUtil::FiniteWithin(f, 3, 2.f)) { memcpy(dirs, f, 12); nDirs = 1; }
+            memcpy(gv, RB_GetVec(grb, RB_GetLinearVelocity), 12); vel = gv;
+        } else memcpy(pos, p.s.pos, 12);
+        if (!NetUtil::FiniteWithin(pos, 3, NetUtil::MAX_POS)) return false;
+        float sp = NetUtil::FiniteWithin(vel, 3, NetUtil::MAX_VEL) ? sqrtf(vel[0] * vel[0] + vel[2] * vel[2]) : 0.f;
+        if (sp > 3.f) { memcpy(dirs + 3 * nDirs, vel, 12); ++nDirs; }   // where it is going (reversing, sliding)
+        return true;
+    }
+    // true = this new-car spot is right in front of the other player (refuse it)
+    bool SpotNearPeer(const float* spot, bool cop) {
+        __try {
+            float pos[3], dirs[6]; int nd = 0;
+            float s[3];
+            if (!spot || !Mem::SafeRead(spot, s, 12) || !NetUtil::FiniteWithin(s, 3, NetUtil::MAX_POS)) return false;
+            if (!PeerForSpawnCheck(pos, dirs, nd) || !NetUtil::SpawnSpotBlocked(s, pos, dirs, nd)) return false;
+            ++(cop ? g_noSpawnCops : g_noSpawnTraffic);
+            if (g_noSpawnLogs < 6) {
+                ++g_noSpawnLogs;
+                LOG("Traffic: a new %s at %.0f %.0f %.0f would appear %.0f m in front of the other player - the game picks another spot",
+                    cop ? "police car" : "traffic car", s[0], s[1], s[2], NetUtil::Dist3(s, pos));
+            }
+            return true;
+        } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+    }
+    bool __fastcall hk_TrafficSpotBlocked(void* self, void*, const float* pos) {
+        if (((bool(__fastcall*)(void*, void*, const float*))TrafficSpotBlockedFn)(self, nullptr, pos)) return true;
+        return SpotNearPeer(pos, false);
+    }
+    bool __fastcall hk_CopSpotOk(void* self, void*, const float* pos, int a, int b, int c, int d) {
+        if (!((bool(__fastcall*)(void*, void*, const float*, int, int, int, int))CopSpotOkFn)(self, nullptr, pos, a, b, c, d)) return false;
+        return !SpotNearPeer(pos, true);
+    }
 
     float __fastcall hk_ComputeDensity(void* self, void* edx) {
         using Fn = float(__fastcall*)(void*, void*);
@@ -324,6 +392,8 @@ namespace {
     int g_hoWaiting = 0;      // host cars waiting for a spot out of view (last MaintainMirrors)
     int g_hoKeptOnExpiry = 0; // host cars the host stopped sending that stayed here because they were on screen
     int g_hoRetiredGone = 0;  // let-go cars we removed once they were out of view
+    int g_viewWaiting = 0;    // NoSpawnNearPlayers: copies not created yet because their spot is in our view
+                              // within 60 m (last MaintainMirrors)
 }
 
 static void OnCarHitImpl(uint16_t id, const float* dv);
@@ -343,6 +413,13 @@ bool Game::InstallTrafficHooks() {
     bool c2 = PatchCallChecked(PursuitCallSite1, SpawnPursuitFn, (void*)&hk_SpawnPursuit);
     bool c3 = PatchCallChecked(PursuitCallSite2, SpawnPursuitFn, (void*)&hk_SpawnPursuit);
     LOG("Cops: spawn hooks %s/%s/%s", c1 ? "ok" : "FAIL", c2 ? "ok" : "FAIL", c3 ? "ok" : "FAIL");
+    {   // [Traffic] NoSpawnNearPlayers (checked at run time, so the hooks are always in place)
+        bool t = PatchCallChecked(TrafficSpotCallSite, TrafficSpotBlockedFn, (void*)&hk_TrafficSpotBlocked);
+        int cops = 0;
+        for (uintptr_t site : CopSpotCallSites) cops += PatchCallChecked(site, CopSpotOkFn, (void*)&hk_CopSpotOk) ? 1 : 0;
+        LOG("Traffic: new traffic / cops never right in front of the other player - spot checks hooked: traffic %s, cops %d/4 (NoSpawnNearPlayers=%d)",
+            t ? "ok" : "FAIL", cops, (int)g_cfg.trafficNoSpawnNearPlayers);
+    }
     Net::OnTraffic = [](const TrafficEntry* e, int count, double sendMs) { if (g_coopLinked) OnTrafficPacket(e, count, sendMs); };
     Net::OnRacerName = &OnRacerName;
     Net::OnCarHit = [](uint16_t id, const float* dv) { if (!g_coopLinked) return; __try { OnCarHitImpl(id, dv); } __except (EXCEPTION_EXECUTE_HANDLER) {} };
@@ -389,6 +466,10 @@ static void BindRaceTraffic() {
         ++nc;
     }
     if (!nc) return;
+    // NoSpawnNearPlayers: a host car whose spot we are looking at (within 60 m) is only shown by one of
+    // our cars that is already about there (it glides into place); else it waits until out of view
+    bool viewRule = g_cfg.trafficNoSpawnNearPlayers;
+    NetUtil::CamView cam = viewRule ? ReadCamera(lrb ? lp : nullptr) : NetUtil::CamView{};
     for (int pass = 0; pass < 2; ++pass) {           // same model for everyone first, then any model
         for (auto& m : g_mirrors) {
             if (!m.used || m.iv || !m.n || !IsRaceTrafficMirror(m)) continue;
@@ -397,6 +478,9 @@ static void BindRaceTraffic() {
             if ((lrb && Dist(lp, e.pos) < 6.f) || (grb && Dist(gp, e.pos) < 6.f)) continue;
             int k = NetUtil::PickTrafficPartner(m.model, e.pos, cand, nc, pass == 1);
             if (k < 0) continue;
+            bool inView = viewRule && !NetUtil::MirrorMayAppear(cam, e.pos);
+            if (inView && !(Dist(cand[k].pos, e.pos) <= 10.f)) { if (pass == 1) ++g_viewWaiting; continue; }
+            if (inView) m.blendPending = true;
             cand[k].skip = true;
             m.iv = cars[k];
             m.bound = true;
@@ -510,6 +594,7 @@ static bool PlaceHostCar(Mirror& m, const NetUtil::CamView& cam, const float* lp
 static int MaintainMirrors(double now) {
     double renderSend = now - Net::PeerClockOffsetMs() - g_cfg.interpDelayMs;
     int spawned = 0, alive = 0, freed = 0;
+    g_viewWaiting = 0;
     if (SharedRaceTraffic()) {
         for (auto& m : g_mirrors)   // the game removed a car we followed with: find another one
             if (m.used && m.bound && m.iv && (!ListContainsOne(VL_AITRAFFIC, m.iv) || m.iv == LocalVehicle())) { m.iv = nullptr; m.bound = false; }   // gone, or the address now holds another kind of car
@@ -530,6 +615,9 @@ static int MaintainMirrors(double now) {
         cam = ReadCamera(lp);
     }
     g_hoWaiting = 0;
+    // NoSpawnNearPlayers: every other copy we create (cops, cars in races, the client's cops on the host,
+    // SmoothHandover=0) never appears inside our view within 60 m either - it waits until out of view
+    NetUtil::CamView viewCam{}; bool viewCamRead = false;
     for (auto& m : g_mirrors) {
         if (!m.used) continue;
         // the owner keeps sending, just not this car: it's gone there. (If the owner sends nothing at all,
@@ -586,7 +674,12 @@ static int MaintainMirrors(double now) {
             if ((lrb && Dist(RB_GetVec(lrb, RB_GetPosition), e.pos) < 6.f) ||
                 (grb && Dist(RB_GetVec(grb, RB_GetPosition), e.pos) < 6.f)) continue;
             // SmoothHandover: only where the player can't see it pop in (or one of our cars becomes it)
-            if (smooth && !(e.flags & 1) && !PlaceHostCar(m, cam, lp, gp, own)) { if (!m.iv) ++g_hoWaiting; continue; }
+            bool placed = smooth && !(e.flags & 1);
+            if (placed && !PlaceHostCar(m, cam, lp, gp, own)) { if (!m.iv) ++g_hoWaiting; continue; }
+            if (!placed && g_cfg.trafficNoSpawnNearPlayers) {
+                if (!viewCamRead) { viewCamRead = true; viewCam = ReadCamera(lrb ? RB_GetVec(lrb, RB_GetPosition) : nullptr); }
+                if (!NetUtil::MirrorMayAppear(viewCam, e.pos)) { ++g_viewWaiting; continue; }
+            }
             float dir[3] = { 1, 0, 0 };
             m.iv = SpawnVehicle(e.model, nullptr, e.pos, dir, g_cfg.trafficMirrorClass);
             ++spawned;
@@ -650,8 +743,21 @@ static int CollectOwned(std::initializer_list<int> lists, const float* to, Traff
 
 static int g_sentCount = 0;
 
+// NoSpawnNearPlayers status whenever the numbers change (at most every 5 s)
+static void NoSpawnStatusTick(double now) {
+    static int lastT = 0, lastC = 0, lastW = -1;
+    static double nextLog = 0;
+    if (nextLog - now > 10000) nextLog = now;   // the sim clock restarted (world reload)
+    if (now < nextLog || (g_noSpawnTraffic == lastT && g_noSpawnCops == lastC && g_viewWaiting == lastW)) return;
+    if (lastW < 0 && !g_noSpawnTraffic && !g_noSpawnCops && !g_viewWaiting) { lastW = 0; return; }
+    lastT = g_noSpawnTraffic; lastC = g_noSpawnCops; lastW = g_viewWaiting; nextLog = now + 5000;
+    LOG("Traffic: no-spawn - %d traffic / %d police spots refused in front of the other player so far, %d of their cars wait until out of our view",
+        lastT, lastC, lastW);
+}
+
 static void TrafficTickImpl(bool connected, const Net::Snapshot& peer) {
     double now = Net::LocalClockMs();
+    if (g_cfg.trafficNoSpawnNearPlayers) NoSpawnStatusTick(now);
     void* me = LocalVehicle();
     void* myRb = RigidBodyOf(me);
     {   // their pause menu sends "no car" for a while: keep everything as it is (like the other player's car)

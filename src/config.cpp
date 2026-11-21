@@ -82,6 +82,7 @@ void Config::Load(const char* ini) {
     trafficMirrorClass = ReadInt(ini, "Traffic", "MirrorClass", 4);
     trafficSharedInRaces = ReadInt(ini, "Traffic", "SharedInRaces", 1) != 0;
     trafficSmoothHandover = ReadInt(ini, "Traffic", "SmoothHandover", 1) != 0;
+    trafficNoSpawnNearPlayers = ReadInt(ini, "Traffic", "NoSpawnNearPlayers", 1) != 0;
     toggleKey    = ReadInt(ini, "Debug", "ToggleKey", 0x77);
     ghostEnabled = ReadInt(ini, "Ghost", "Enabled", 1) != 0;
     interpDelayMs= ReadInt(ini, "Ghost", "InterpDelayMs", 100);
