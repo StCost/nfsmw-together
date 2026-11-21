@@ -1244,9 +1244,9 @@ static void GhostModelCheck() {
     if (type == -3 || type == -2) return;
     if (firstType == -9) { if (type >= 0) { firstType = type; LOG("Ghost: render model type %d", type); } return; }
     if (type != firstType && now - since > 3000) {
-        LOG("Ghost: render model changed (%d -> %d) - respawning the other player's car", firstType, type);
-        Game::ReleaseGhost();
-        checked = nullptr;
+        // respawning doesn't help (the new car can get a wrong model at once): only report it, once per change
+        LOG("Ghost: render model changed (%d -> %d)", firstType, type);
+        firstType = type;
     }
 }
 
