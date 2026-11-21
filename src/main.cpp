@@ -182,6 +182,7 @@ namespace {
                     else if (c == "cop") r = Game::DebugSpawnCop();
                     else if (c == "uncop") r = Game::DebugKillCops();
                     else if (c == "ram") r = Game::DebugRam();
+                    else if (c == "ram cop") r = Game::DebugRam(true);
                     else if (c == "pos") r = Game::DebugPos();
                     else if (c.rfind("tp ", 0) == 0) r = Game::DebugTeleport(c.substr(3).c_str());
                     else if (c == "skipnis") r = Game::DebugNisSkip();
@@ -220,6 +221,7 @@ namespace {
             local.pad[0] = g_gameOk ? Game::RaceStage() : 0;
             local.pad[1] = g_coopHere ? 1 : 0;                    // co-op allowed here (past the prologue)
             local.pad[2] = g_gameOk ? Game::CareerBin() : 0;      // career rival number (story scenes the other game may show)
+            if (g_gameOk) Game::FillSharedPursuit(local);          // [Coop] SharedPursuits: heat, pursuit state, busts
 
             static double nextSend = 0;
             double nowMs = Net::NowMs();

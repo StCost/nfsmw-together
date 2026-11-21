@@ -50,8 +50,8 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - **Events together.** Start any career event and your partner is taken along. You get the same opponents,
   start at the same moment and see each other.
 - **Shared wins.** If either of you finishes first, it counts for both players.
-- **Police.** Each of you has your own heat and your own pursuit, and you see the cops chasing your partner.
-  Getting busted only takes out the player who was caught.
+- **Police.** In free roam the cops are shared: you get the same heat, you lose them together and you get
+  busted together. Your partner's cops show on your minimap and set off your radar detector.
 - **One world.** Shared traffic when you're near by, collisions between your cars, blips on the minimap and map.
 - **Saves.** Everyone keeps their own career save. The host stores a copy of the partner's save after every
   autosave and hands it back if theirs is ever missing or older.
@@ -99,7 +99,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 
 - [x] Shared traffic when you're near each other
 - [x] Cops of the other player show up for you, light bars included
-- [x] Each player keeps their own heat and pursuit, and sees the cops chasing the other player
+- [x] You see the cops chasing the other player
 - [x] Cops may switch to chasing the other player when you're both being chased (?)
 - [x] Traffic cars near the other player keep full physics instead of moving at reducing quality
 - [x] Hitting the other player's traffic, cops or race opponents pushes the real car on their PC (?)
@@ -137,7 +137,13 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Cutscene skip voting: a cutscene you both watch is skipped only when both press skip
 - [x] Story scenes outside events: when one of you gets a story movie (Blacklist rival movie, story FMV, also in the Safe House) or a story cutscene in the world, the other gets a notice and their game waits in free roam until it's over (`SyncStoryScenes`)
 - [x] With `SyncStoryScenes=2` the same story movie also plays on the other PC if their career has got that far, and a movie you both watch is skipped only when both press skip (in-world cutscenes are never started on the other PC) (?)
-- [x] Getting busted or escaping only affects the player being chased
+- [x] Shared pursuits in free roam (`[Coop] SharedPursuits`, on by default): when one of you gets heat the other gets the same, and the hotter of the two counts (?)
+- [x] The other player's cops are on your minimap while they chase, and your radar detector beeps for them like for your own (?)
+- [x] Ramming one of the other player's cops starts a pursuit on you, like hitting one of your own (?)
+- [x] Busted together: if one of you gets busted, the other one is busted too, through the game's own arrest (?)
+- [x] Escape together: the cooldown only runs while neither of you is seen, starts over for both when either one is spotted, and you both get away at the same moment (?)
+- [x] No pursuit-start camera in co-op: the camera stays on your car when a chase begins (`NoPursuitCams`, launcher: No pursuit start camera) (?)
+- [x] With `SharedPursuits=0` it's like before: getting busted or escaping only affects the player being chased
 
 
 </details>
@@ -159,7 +165,7 @@ yours first if you have one), start the game and pick the `MWT` profile.
 - [x] Performance diagnostics: `[Debug] Perf=1` logs fps, 1% lows, worst frame and how many milliseconds each part of the mod takes, every 5 seconds (it's also shown in the F8 overlay). For testing purposes
 - [x] **F7** starts the test event (`TestEvent`) for both players. For testing purposes
 - [x] **F10 / F11** spawn or remove a test copy of the other player's car, **F12** spawns a test cop. For testing purposes
-- [x] Test commands in `scripts\MWTogether.cmd` also include `pursuit` (the cops start a pursuit on you), `uncop` (remove every police car, so the pursuit ends in an escape) and `tp x y z` (move your car). Full list in `docs/TESTING.md`. For testing purposes
+- [x] Test commands in `scripts\MWTogether.cmd` also include `pursuit` (the cops start a pursuit on you), `uncop` (remove every police car, so the pursuit ends in an escape), `ram cop` (drive into the other player's nearest cop) and `tp x y z` (move your car). Full list in `docs/TESTING.md`. For testing purposes
 
 
 </details>
@@ -229,7 +235,8 @@ The code is in `src/`:
 | `game.cpp` | vehicles, spawning, the other player's car (ghost), race integration, autopilot |
 | `traffic.inl` | traffic, cop and race-opponent mirroring |
 | `event.inl` | shared event start, roster, co-op rules (speedbreaker, no pause, restart sync) |
-| `pursuit.inl` | cops chasing the other player |
+| `pursuit.inl` | cops chasing the other player, shared heat / busted / cooldown, their cops on the minimap and radar, no pursuit-start camera |
+| `pursuitutil.h` | the shared-pursuit rules that don't need the game (heat, cooldown, busted), tested in `tests\test_pursuit.cpp` |
 | `stream.inl` | world streaming around the other player |
 | `minimap.inl`, `worldmap.inl` | player blips |
 | `boot.inl` | fast start (skip intro, direct free roam, no safe-house dialog) |

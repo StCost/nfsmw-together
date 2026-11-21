@@ -48,6 +48,7 @@ TEST(config_defaults_when_file_is_missing) {
     CHECK_EQ(c.uiMenuSpeed, 2);
     CHECK(!c.skipPursuitResults);
     CHECK_EQ(c.syncStoryScenes, 1);
+    CHECK(c.sharedPursuits); CHECK(c.noPursuitCams);
     CHECK(c.hideCursor);
     CHECK(!c.startInBackground);
     // debug options are all off unless asked for
@@ -63,7 +64,7 @@ TEST(config_parses_values) {
         "[Player]\r\nName=Kostya\r\n"
         "[Ghost]\r\nEnabled=0\r\nInterpDelayMs=150\r\nCollisions=0\r\nSafeDistance=25\r\n"
         "[Traffic]\r\nSync=0\r\nMirrorClass=6\r\nSharedInRaces=0\r\n"
-        "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\n"
+        "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\nSharedPursuits=0\r\nNoPursuitCams=0\r\n"
         "[Start]\r\nSkipIntro=0\r\nDirectFreeRoam=0\r\nSkipLeaveSafeHouseDialog=0\r\n"
         "[AutoStart]\r\nEnabled=0\r\nTarget=race\r\nDelayMs=10\r\nIntervalMs=20\r\nSequence=ENTER,ENTER\r\n"
         "[UI]\r\nIntroInput=0\r\nMenuSpeed=3\r\nSkipPursuitResults=1\r\n"
@@ -93,6 +94,7 @@ TEST(config_parses_values) {
     CHECK_EQ(c.uiMenuSpeed, 3);
     CHECK(c.skipPursuitResults);
     CHECK_EQ(c.syncStoryScenes, 2);
+    CHECK(!c.sharedPursuits); CHECK(!c.noPursuitCams);
     CHECK(!c.hideCursor);
     CHECK(c.startInBackground);
     CHECK(c.showOverlay); CHECK(c.testKeys); CHECK(c.autoPilot); CHECK(c.perf);

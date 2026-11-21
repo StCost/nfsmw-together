@@ -79,7 +79,22 @@ struct CarState {
     uint32_t glare;         // light bits: head / brake / reverse / signals
     uint32_t damageZones;   // body damage: 10 zones x 3 bits (IDamageable GetZoneDamage)
     uint32_t brokenLights;  // broken head / brake lights (IDamageableVehicle +0x5C bit mask)
+    // shared pursuits ([Coop] SharedPursuits; all zero when the sender has it off or isn't in free roam)
+    uint16_t heat100;       // heat x100 of the sender's car (IPerpetrator::GetHeat), 0 = unknown
+    uint8_t  pursuitFlags;  // PURSUIT_* bits below
+    uint8_t  bustSeq;       // +1 every time the sender gets busted on its own (the other game follows)
+    uint16_t coolLeft10;    // cooldown time left x10 (s) of the sender's pursuit
+    uint16_t pad2;
 };
+enum : uint8_t {
+    PURSUIT_ACTIVE   = 1,   // in a pursuit that is still running (not busted / escaped)
+    PURSUIT_SEEN     = 2,   // its own cops saw the sender in the last 7 s (before any co-op hold)
+    PURSUIT_COOLDOWN = 4,   // the cooldown runs
+    PURSUIT_BUSTED   = 8,
+    PURSUIT_KNOWN_BITS = 0x0F,
+};
+constexpr uint16_t MAX_HEAT100 = 1500;       // heat 15 (the career stops at 5, mods at 10)
+constexpr uint16_t MAX_COOL_LEFT10 = 6000;   // 10 minutes
 
 struct StatePacket {
     PacketHeader h;
@@ -114,7 +129,7 @@ struct CarPacket {
 
 struct TrafficEntry {
     uint16_t id;          // host-side id (stable while the car exists)
-    uint16_t flags;       // bit0 = cop car
+    uint16_t flags;       // bit0 = cop car, bit1 = race opponent, bit2 = cop in a pursuit (radar icon)
     uint32_t model;       // model key (hash of the model name)
     uint32_t glare;       // light bits (IVehicle+0x9C): head/brake/reverse/signals/cop lights
     float    pos[3];
@@ -183,7 +198,7 @@ struct TrafficPacket {
 #pragma pack(pop)
 
 constexpr uint32_t COOP_MAGIC   = 0x4F43574D; // "MWCO"
-constexpr uint16_t COOP_VERSION = 17;   // 17: story scenes (nisHash also carries story movies, pad[2] = rival number)
+constexpr uint16_t COOP_VERSION = 18;   // 18: shared pursuits (CarState heat100 / pursuitFlags / bustSeq / coolLeft10)
 
 struct NetStats {
     bool        connected = false;

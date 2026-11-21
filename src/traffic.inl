@@ -185,6 +185,7 @@ namespace {
 }
 
 static void OnCarHitImpl(uint16_t id, const float* dv);
+static void SharedPursuitCopHit(uint16_t mirrorId);   // pursuit.inl
 
 bool Game::InstallTrafficHooks() {
     uint8_t op = 0; int32_t rel = 0;
@@ -371,6 +372,10 @@ static int CollectOwned(std::initializer_list<int> lists, const float* to, Traff
         e.id = HostIdFor(cand[i].iv);
         if (!e.id) continue;
         e.flags = cand[i].flags;
+        if (e.flags & 1) {   // a cop in a pursuit (IPursuitAI 0x4038E0, slot 5 GetInPursuit - what the minimap checks)
+            void* pai = Find(cand[i].iv, 0x4038E0);
+            if (pai && VCall<bool(__thiscall*)(void*)>(pai, 5)(pai)) e.flags |= 4;
+        }
         e.model = ModelKeyOf(cand[i].iv);
         e.glare = GlareBits(cand[i].iv);
         memcpy(e.pos, RB_GetVec(rb, RB_GetPosition), 12);
@@ -558,7 +563,12 @@ static void MirrorHitTick() {
         float dv[3] = { v0[0] - lv[0], v0[1] - lv[1], v0[2] - lv[2] };
         float mag = sqrtf(dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2]);
         t0 = 0; lastSent = now;
-        if (mag > 4.f) { Net::SendCarHit(target, dv); LOG("Collision: hit the other player's car %u, lost %.0f km/h - sent to them", (unsigned)target, mag * 3.6f); }
+        if (mag > 4.f) {
+            Net::SendCarHit(target, dv);
+            LOG("Collision: hit the other player's car %u, lost %.0f km/h - sent to them", (unsigned)target, mag * 3.6f);
+            Mirror* m = FindMirror(target);
+            if (m && m->n && (m->s[m->n - 1].e.flags & 1)) SharedPursuitCopHit(target);   // one of their cops
+        }
     }
     memcpy(prevV, lv, 12); prevT = now;
 }

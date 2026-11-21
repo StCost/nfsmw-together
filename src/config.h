@@ -28,6 +28,9 @@ struct Config {
     bool        skipPursuitResults = false; // [UI] SkipPursuitResults - close the pursuit result screen in free roam
     bool        startInBackground = false; // [Window] StartInBackground - give focus back on start, game muted until clicked
     bool        syncWeather = true;      // [Coop] SyncWeather - the client shows the host's rain
+    bool        sharedPursuits = true;   // [Coop] SharedPursuits - shared heat, busted together, cooldown / escape together,
+                                         // the other player's cops on the radar, ramming their cop starts a pursuit
+    bool        noPursuitCams = true;    // [Coop] NoPursuitCams - no pursuit-start camera (look at the cop) while connected
     bool        noSlowMotion = true;     // [Coop] NoSlowMotion - no slow-motion moments while connected (speed traps, pursuit / crash cams)
     bool        catchUpLeader = true;    // [Coop] CatchUpLeader - AI catch-up follows whichever player is ahead
     bool        startTogether = true;    // [Coop] StartTogether - wait on the grid until the other player has loaded
