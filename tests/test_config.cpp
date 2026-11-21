@@ -41,6 +41,7 @@ TEST(config_defaults_when_file_is_missing) {
     CHECK_EQ(c.trafficMirrorClass, 4);
     CHECK(c.trafficSharedInRaces);
     CHECK(c.trafficSmoothHandover);
+    CHECK(c.trafficNoSpawnNearPlayers);
     CHECK(c.noSpeedbreaker); CHECK(c.noPause); CHECK(c.runInBackground); CHECK(c.streamAroundPeer);
     CHECK(!c.skipIntro); CHECK(c.directFreeRoam); CHECK(c.skipLeaveSafeHouseDialog);
     CHECK(c.autoStart);
@@ -67,7 +68,7 @@ TEST(config_parses_values) {
         "[Network]\r\nMode=client\r\nHostIP=192.168.1.20\r\nClientIP=192.168.1.21\r\nPort=50000\r\nSendRate=30\r\n"
         "[Player]\r\nName=Kostya\r\n"
         "[Ghost]\r\nEnabled=0\r\nInterpDelayMs=150\r\nCollisions=0\r\nSafeDistance=25\r\n"
-        "[Traffic]\r\nSync=0\r\nMirrorClass=6\r\nSharedInRaces=0\r\nSmoothHandover=0\r\n"
+        "[Traffic]\r\nSync=0\r\nMirrorClass=6\r\nSharedInRaces=0\r\nSmoothHandover=0\r\nNoSpawnNearPlayers=0\r\n"
         "[Coop]\r\nNoSpeedbreaker=0\r\nNoPause=0\r\nRunInBackground=0\r\nStreamAroundPeer=0\r\nSyncStoryScenes=2\r\nSharedPursuits=0\r\nNoPursuitCams=0\r\n"
         "[Start]\r\nSkipIntro=0\r\nDirectFreeRoam=0\r\nSkipLeaveSafeHouseDialog=0\r\n"
         "[AutoStart]\r\nEnabled=0\r\nTarget=race\r\nDelayMs=10\r\nIntervalMs=20\r\nSequence=ENTER,ENTER\r\n"
@@ -89,6 +90,7 @@ TEST(config_parses_values) {
     CHECK_EQ(c.trafficMirrorClass, 6);
     CHECK(!c.trafficSharedInRaces);
     CHECK(!c.trafficSmoothHandover);
+    CHECK(!c.trafficNoSpawnNearPlayers);
     CHECK(!c.noSpeedbreaker); CHECK(!c.noPause); CHECK(!c.runInBackground); CHECK(!c.streamAroundPeer);
     CHECK(!c.skipIntro); CHECK(!c.directFreeRoam); CHECK(!c.skipLeaveSafeHouseDialog);
     CHECK(!c.autoStart);
@@ -212,6 +214,7 @@ TEST(config_shipped_ini_matches_built_in_defaults) {
     CHECK_EQ(shipped.trafficMirrorClass, def.trafficMirrorClass);
     CHECK_EQ(shipped.trafficSharedInRaces, def.trafficSharedInRaces);
     CHECK_EQ(shipped.trafficSmoothHandover, def.trafficSmoothHandover);
+    CHECK_EQ(shipped.trafficNoSpawnNearPlayers, def.trafficNoSpawnNearPlayers);
     CHECK_EQ(shipped.noSpeedbreaker, def.noSpeedbreaker);
     CHECK_EQ(shipped.noPause, def.noPause);
     CHECK_EQ(shipped.runInBackground, def.runInBackground);

@@ -183,6 +183,78 @@ TEST(util_handover_takeover_partner) {
     CHECK_EQ(PickTakeoverPartner(0xB, at, bad, 1, 30.f, 10.f), -1);
 }
 
+// ---- no new cars in front of the other player ----
+TEST(util_nospawn_in_front_of_the_other_player) {
+    const float car[3] = { 100, 5, 200 };
+    const float fwd[3] = { 0, 0, 1 };                          // facing +z (y is up)
+    auto at = [&](float dx, float dz, float* o) { o[0] = car[0] + dx; o[1] = car[1]; o[2] = car[2] + dz; return o; };
+    float p[3];
+    CHECK(SpawnSpotBlocked(at(0, 40, p), car, fwd, 1));        // straight ahead, 40 m
+    CHECK(SpawnSpotBlocked(at(20, 45, p), car, fwd, 1));       // ahead, a little to the side
+    CHECK(!SpawnSpotBlocked(at(0, 70, p), car, fwd, 1));       // ahead but beyond 60 m
+    CHECK(!SpawnSpotBlocked(at(0, -40, p), car, fwd, 1));      // behind
+    CHECK(!SpawnSpotBlocked(at(45, -10, p), car, fwd, 1));     // beside and a bit behind: out of the cone
+    CHECK(SpawnSpotBlocked(at(0, -10, p), car, fwd, 1));       // very close: any direction
+    CHECK(SpawnSpotBlocked(at(12, 0, p), car, fwd, 1));
+    // the cone starts at the chase camera behind the car: a spot close beside the car counts
+    CHECK(SpawnSpotBlocked(at(18, 8, p), car, fwd, 1));
+    // height counts in the distance (a bridge 70 m above), not in the cone
+    const float above[3] = { car[0], car[1] + 70, car[2] + 10 };
+    CHECK(!SpawnSpotBlocked(above, car, fwd, 1));
+    const float slope[3] = { car[0], car[1] + 8, car[2] + 30 };
+    CHECK(SpawnSpotBlocked(slope, car, fwd, 1));
+    // a direction that isn't unit length (a velocity) works the same; two directions: either counts
+    const float vel[3] = { 30, 0, 0 };                         // body points +z, sliding along +x
+    const float two[6] = { 0, 0, 1, 30, 0, 0 };
+    CHECK(SpawnSpotBlocked(at(40, 0, p), car, vel, 1));
+    CHECK(SpawnSpotBlocked(at(40, 0, p), car, two, 2));
+    CHECK(SpawnSpotBlocked(at(0, 40, p), car, two, 2));
+    CHECK(!SpawnSpotBlocked(at(-40, -20, p), car, two, 2));
+}
+
+TEST(util_nospawn_unknown_heading_or_bad_input) {
+    const float car[3] = { 0, 0, 0 };
+    const float behind[3] = { 0, 0, -40 }, farAway[3] = { 0, 0, -80 };
+    CHECK(SpawnSpotBlocked(behind, car, nullptr, 0));          // heading unknown: the whole circle
+    CHECK(!SpawnSpotBlocked(farAway, car, nullptr, 0));
+    const float zero[3] = { 0, 5, 0 };                         // straight up / zero: no usable direction
+    CHECK(SpawnSpotBlocked(behind, car, zero, 1));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float nanDir[3] = { nan, 0, nan };
+    CHECK(SpawnSpotBlocked(behind, car, nanDir, 1));
+    const float bad[3] = { nan, 0, 0 };
+    CHECK(!SpawnSpotBlocked(bad, car, nullptr, 0));            // a broken spot is not ours to refuse
+    CHECK(!SpawnSpotBlocked(behind, bad, nullptr, 0));
+}
+
+TEST(util_nospawn_mirror_may_appear) {
+    CamView c = Cam(0, 2, -5, 0, 0, 1);                       // chase camera 5 m behind the player
+    const float ahead40[3] = { 0, 0, 40 }, ahead90[3] = { 0, 0, 90 }, behind30[3] = { 0, 0, -30 }, side50[3] = { 50, 0, 0 };
+    CHECK(!MirrorMayAppear(c, ahead40));                      // in view and close: wait
+    CHECK(MirrorMayAppear(c, ahead90));                       // in view but farther than 60 m
+    CHECK(MirrorMayAppear(c, behind30));                      // behind the camera
+    CHECK(MirrorMayAppear(c, side50));                        // out of the cone
+    CamView none = Cam(0, 0, 0, 0, 0, 0, false);              // unknown camera: only farther than 60 m
+    CHECK(!MirrorMayAppear(none, behind30));
+    CHECK(MirrorMayAppear(none, ahead90));
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float bad[3] = { nan, nan, nan };
+    CHECK(!MirrorMayAppear(c, bad));
+}
+
+// ---- AI catch-up ----
+TEST(util_catch_up_follows_the_leader) {
+    float out = -1;
+    CHECK(CatchUpLeaderPct(40.f, true, 55.f, out));  CHECK_EQ(out, 55.f);   // partner ahead
+    CHECK(CatchUpLeaderPct(60.f, true, 55.f, out));  CHECK_EQ(out, 60.f);   // we are ahead
+    CHECK(CatchUpLeaderPct(40.f, false, 90.f, out)); CHECK_EQ(out, 40.f);   // partner doesn't count
+    CHECK(CatchUpLeaderPct(40.f, true, 140.f, out)); CHECK_EQ(out, 100.f);  // never past the finish
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    CHECK(CatchUpLeaderPct(40.f, true, nan, out));   CHECK_EQ(out, 40.f);
+    CHECK(!CatchUpLeaderPct(-1.f, true, 50.f, out));                        // no racer of ours
+    CHECK(!CatchUpLeaderPct(nan, true, 50.f, out));
+}
+
 TEST(util_hermite) {
     // endpoints
     CHECK_NEAR(Hermite(3, 7, 9, -2, 0.5f, 0.0f), 3, 1e-5);

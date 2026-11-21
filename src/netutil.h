@@ -114,6 +114,52 @@ namespace NetUtil {
         return best >= 0 ? best : bestAny;
     }
 
+    // ---- no new cars in front of the other player ([Traffic] NoSpawnNearPlayers) ---------------
+    // The game picks spots for new traffic cars and cops around its OWN player only, so it happily puts
+    // one right in front of the other player, who then crashes into it. A spot is refused when it is
+    // close to that player's car and in front of it (their camera looks along the car), in any
+    // direction when very close. The car's heading comes as up to two directions (the way the body
+    // points, the way it moves); y is up, the cone is measured flat (x, z).
+    constexpr float NOSPAWN_RADIUS_M   = 60.f;   // farther than this a new car is fine anywhere
+    constexpr float NOSPAWN_ANY_M      = 15.f;   // closer than this: never, whatever the direction
+    constexpr float NOSPAWN_VIEW_COS   = 0.5f;   // cos 60 deg: the half-cone counted as "in front"
+    constexpr float NOSPAWN_CAM_BACK_M = 6.f;    // the chase camera sits about this far behind the car
+    inline bool SpawnSpotBlocked(const float* p, const float* car, const float* dirs, int nDirs) {
+        float d = Dist3(p, car);
+        if (!(d == d)) return false;                            // NaN spot: not ours to judge
+        if (d >= NOSPAWN_RADIUS_M) return false;
+        if (d < NOSPAWN_ANY_M) return true;
+        bool anyDir = false;
+        for (int k = 0; k < nDirs; ++k) {
+            const float* f = dirs + 3 * k;
+            float fl = sqrtf(f[0] * f[0] + f[2] * f[2]);
+            if (!(fl > 1e-3f)) continue;                        // no usable direction (or NaN)
+            anyDir = true;
+            float fx = f[0] / fl, fz = f[2] / fl;
+            // seen from where the camera is (behind the car): the cone also covers the car's flanks
+            float vx = p[0] - (car[0] - fx * NOSPAWN_CAM_BACK_M), vz = p[2] - (car[2] - fz * NOSPAWN_CAM_BACK_M);
+            float vl = sqrtf(vx * vx + vz * vz);
+            if (!(vl > 1e-3f)) return true;
+            if ((vx * fx + vz * fz) / vl >= NOSPAWN_VIEW_COS) return true;
+        }
+        return !anyDir;                                          // heading unknown: the whole circle counts
+    }
+    // A host car (or the other player's cop) we haven't created here yet may appear now: not inside
+    // our camera's view within NOSPAWN_RADIUS_M (else it waits until it is out of view or farther).
+    inline bool MirrorMayAppear(const CamView& c, const float* p) {
+        return !InCameraView(c, p, NOSPAWN_RADIUS_M);
+    }
+
+    // ---- AI catch-up in co-op ----------------------------------------------------------------
+    // The race % the AI catch-up measures itself against: the leading player. ourPct < 0 = we have no
+    // racer (leave the game alone: false). The partner counts while `peerOk`.
+    inline bool CatchUpLeaderPct(float ourPct, bool peerOk, float peerPct, float& out) {
+        if (!(ourPct >= 0.f)) return false;
+        out = ourPct;
+        if (peerOk && peerPct == peerPct && peerPct > out) out = peerPct > 100.f ? 100.f : peerPct;
+        return true;
+    }
+
     // ---- interpolation math -----------------------------------------------------------------
     inline void Lerp3(const float* a, const float* b, float t, float* o) {
         for (int i = 0; i < 3; ++i) o[i] = a[i] + (b[i] - a[i]) * t;
