@@ -24,6 +24,9 @@ struct Config {
     bool        directFreeRoam = true;
     bool        skipLoadComplete = true; // [Start] SkipLoadComplete - confirm the "load complete" screen by itself   // [Start] DirectFreeRoam - load career free roam right after the profile
     bool        skipLeaveSafeHouseDialog = true; // [Start] SkipLeaveSafeHouseDialog
+    std::string lastProfile;             // [Start] LastProfile - written by the mod: the profile loaded last; with DirectFreeRoam
+                                         // it is picked by itself in the profile list (several profiles)
+    std::string iniFile;                 // the ini this was loaded from (the mod writes LastProfile there)
     bool        gameNotices = true;       // [UI] GameNotices - notices in the game's own banner (EA Trax chyron)
     int         noticeSeconds = 10;       // [UI] NoticeSeconds - how long a notice stays on screen (2..60)
     bool        gamepadHotplug = true;    // [Input] GamepadHotplug - pick up pads connected while the game runs

@@ -3,6 +3,7 @@
 #include "pursuitutil.h"
 #include "milestoneutil.h"
 #include "raceutil.h"
+#include "profileutil.h"
 #include "mem.h"
 #include "log.h"
 #include "config.h"
