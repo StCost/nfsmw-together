@@ -266,7 +266,12 @@ namespace {
                 if (GetTickCount() - lastLog > 15000) { lastLog = GetTickCount(); LOG("Race: catch-up measured against %.1f%% (ours %.1f%%, partner %.1f%%)", out, a, b); }
                 return true;
             }
-            if (peerRacing && !gri) { out = p.s.racePct > a ? p.s.racePct : a; return true; }   // rival races: their car isn't a racer here
+            if (peerRacing && !gri) {   // rival races: their car isn't a racer here
+                out = p.s.racePct > a ? p.s.racePct : a;
+                static DWORD lastLog2 = 0;
+                if (GetTickCount() - lastLog2 > 15000) { lastLog2 = GetTickCount(); LOG("Race: catch-up measured against %.1f%% (ours %.1f%%, partner %.1f%%, rival race)", out, a, p.s.racePct); }
+                return true;
+            }
             return false;                                                                      // solo: leave the game alone
         } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
