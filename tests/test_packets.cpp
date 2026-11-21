@@ -296,3 +296,103 @@ TEST(packets_no_callbacks_installed_is_safe) {
     DeliverToClient(d);
     CHECK_EQ(Net::Stats().packetsIn, in + d.size());
 }
+
+// ---- truck trailers (PKT_TRAILER) -------------------------------------------------------------
+namespace {
+    TrailerEntry MakeTrailerEntry(uint16_t truckId, float x) {
+        TrailerEntry e{};
+        e.id = truckId; e.flags = TRAILER_HITCHED; e.model = 0x2000u + truckId;
+        e.pos[0] = x; e.rot[3] = 1.0f; e.linVel[0] = 5.0f;
+        return e;
+    }
+    struct SeenTrailers { int calls = 0, count = -1; double sendMs = 0; std::vector<TrailerEntry> e; };
+    SeenTrailers g_trl;
+    void HookTrailers() {
+        g_trl = SeenTrailers{};
+        Net::OnTrailers = [](const TrailerEntry* e, int n, double sendMs) {
+            ++g_trl.calls; g_trl.count = n; g_trl.sendMs = sendMs; g_trl.e.assign(e, e + n);
+        };
+    }
+}
+
+TEST(packets_trailer_round_trip) {
+    Datagrams d = SerializeOnHost([] {
+        TrailerEntry e[3];
+        for (int i = 0; i < 3; ++i) e[i] = MakeTrailerEntry((uint16_t)(i + 7), 10.0f * i);
+        e[1].flags = TRAILER_EMULATED;                     // not hitched there, floating
+        Net::SendTrailers(e, 3, 8.25f);
+        Net::SendTrailers(e, 0, 8.30f);                    // "no trucks near you": still sent (tells we send trailers)
+    });
+    REQUIRE(d.size() == 2);
+    CHECK_EQ(d[0].size(), offsetof(TrailerPacket, e) + 3 * sizeof(TrailerEntry));
+    CHECK_EQ(d[1].size(), offsetof(TrailerPacket, e));
+
+    NetFixture client(false);
+    Connect("Host");
+    HookTrailers();
+    DeliverToClient({ d[0] });
+    REQUIRE(g_trl.calls == 1);
+    REQUIRE(g_trl.count == 3);
+    CHECK_NEAR(g_trl.sendMs, 8250, 1e-6);
+    CHECK_EQ(g_trl.e[0].id, 7);
+    CHECK_EQ(g_trl.e[0].flags, TRAILER_HITCHED);
+    CHECK_EQ(g_trl.e[1].flags, TRAILER_EMULATED);
+    CHECK_NEAR(g_trl.e[2].pos[0], 20.0, 1e-4);
+    DeliverToClient({ d[1] });
+    CHECK_EQ(g_trl.calls, 2);
+    CHECK_EQ(g_trl.count, 0);
+}
+
+TEST(packets_trailer_counts_clamped_on_send) {
+    Datagrams d = SerializeOnHost([] {
+        TrailerEntry e[12];
+        for (int i = 0; i < 12; ++i) e[i] = MakeTrailerEntry((uint16_t)(i + 1), 0);
+        Net::SendTrailers(e, 12, 1.0f);                    // more than fits: the first 8
+        Net::SendTrailers(e, -1, 1.0f);
+        Net::SendTrailers(nullptr, 3, 1.0f);
+    });
+    REQUIRE(d.size() == 3);
+    CHECK_EQ(d[0].size(), sizeof(TrailerPacket));
+    CHECK_EQ(((const TrailerPacket*)d[0].data())->count, MAX_TRAILERS_PER_PACKET);
+    CHECK_EQ(d[1].size(), offsetof(TrailerPacket, e));
+    CHECK_EQ(d[2].size(), offsetof(TrailerPacket, e));
+}
+
+TEST(packets_trailer_bad_packets_are_dropped) {
+    NetFixture client(false);
+    Connect("Host");
+    HookTrailers();
+    TrailerPacket p{};
+    p.h = Hdr(PKT_TRAILER, 5);
+    p.simTime = 2.0f;
+    for (int i = 0; i < MAX_TRAILERS_PER_PACKET; ++i) p.e[i] = MakeTrailerEntry((uint16_t)(i + 1), 0);
+
+    p.count = MAX_TRAILERS_PER_PACKET + 1; Inject(p);   // more than a packet holds
+    p.count = 255; Inject(p);
+    p.count = 3; InjectRaw(&p, (int)(offsetof(TrailerPacket, e) + 2 * sizeof(TrailerEntry) + 10));   // claims 3, carries 2.2
+    InjectRaw(&p, (int)offsetof(TrailerPacket, e) - 1);  // shorter than the header part
+    TrailerPacket bad = p;
+    bad.e[1].pos[2] = std::numeric_limits<float>::quiet_NaN(); Inject(bad);
+    bad = p; bad.e[0].rot[0] = bad.e[0].rot[3] = 0.f; Inject(bad);   // a zero quaternion is no rotation
+    bad = p; bad.e[2].angVel[1] = std::numeric_limits<float>::infinity(); Inject(bad);
+    bad = p; bad.e[0].flags = 0x80; Inject(bad);         // unknown flag bits
+    bad = p; bad.simTime = std::numeric_limits<float>::quiet_NaN(); Inject(bad);
+    CHECK_EQ(g_trl.calls, 0);
+
+    bad = p; bad.e[5].pos[0] = std::numeric_limits<float>::quiet_NaN();   // beyond `count`: not looked at
+    Inject(bad);
+    CHECK_EQ(g_trl.calls, 1);
+    CHECK_EQ(g_trl.count, 3);
+}
+
+TEST(packets_trailer_without_callback_is_safe) {
+    NetFixture client(false);
+    Connect("Host");
+    Net::OnTrailers = nullptr;
+    TrailerPacket p{};
+    p.h = Hdr(PKT_TRAILER, 5);
+    p.count = 1; p.simTime = 1.0f; p.e[0] = MakeTrailerEntry(1, 0);
+    uint32_t in = Net::Stats().packetsIn;
+    Inject(p);
+    CHECK_EQ(Net::Stats().packetsIn, in + 1);
+}

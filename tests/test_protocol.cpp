@@ -54,6 +54,13 @@ static_assert((FILE_MAX + FILE_CHUNK - 1) / FILE_CHUNK <= 0xFFFF, "a file of FIL
 constexpr size_t MAX_DATAGRAM = 1472;
 static_assert(sizeof(TrafficPacket) <= MAX_DATAGRAM && sizeof(CarPacket) <= MAX_DATAGRAM &&
               sizeof(RosterPacket) <= MAX_DATAGRAM && sizeof(FileChunkPacket) <= MAX_DATAGRAM, "packet does not fit one datagram");
+static_assert(sizeof(TrailerEntry) == 60 && offsetof(TrailerEntry, pos) == 8 && offsetof(TrailerEntry, rot) == 20 &&
+              offsetof(TrailerEntry, linVel) == 36 && offsetof(TrailerEntry, angVel) == 48, "TrailerEntry layout changed");
+static_assert(offsetof(TrailerPacket, e) == 24 && sizeof(TrailerPacket) == 24 + MAX_TRAILERS_PER_PACKET * 60 &&
+              sizeof(TrailerPacket) <= MAX_DATAGRAM, "TrailerPacket layout changed");
+// a new packet type must not reuse a number an older build gives another meaning
+static_assert(PKT_TRAILER != PKT_FOLLOW && PKT_TRAILER != PKT_MILESTONE && PKT_TRAILER != PKT_WEATHER &&
+              PKT_TRAILER != PKT_CARPART && PKT_TRAILER > PKT_FOLLOW, "PKT_TRAILER collides with another packet type");
 
 TEST(protocol_struct_sizes) {
     // the same numbers at run time, so a failure shows up in the test report too
@@ -77,6 +84,9 @@ TEST(protocol_struct_sizes) {
     CHECK_EQ(FILE_CHUNK, 1024);
     CHECK_EQ(FILE_MAX, 262144);
     CHECK_EQ(sizeof(MilestonePacket), 32);
+    CHECK_EQ(sizeof(TrailerEntry), 60);
+    CHECK_EQ(sizeof(TrailerPacket), 504);
+    CHECK_EQ((int)PKT_TRAILER, 23);
 }
 
 TEST(protocol_magic_and_version) {

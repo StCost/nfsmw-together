@@ -287,6 +287,16 @@ namespace {
             if (Net::OnTraffic) Net::OnTraffic(p->e, n, (double)p->simTime * 1000.0);
             break;
         }
+        case PKT_TRAILER: {
+            if (len < (int)offsetof(TrailerPacket, e)) return;
+            const TrailerPacket* p = (const TrailerPacket*)buf;
+            int n = p->count;
+            if (n > MAX_TRAILERS_PER_PACKET || len < (int)(offsetof(TrailerPacket, e) + n * sizeof(TrailerEntry))) return;
+            if (!NetUtil::FiniteWithin(&p->simTime, 1, NetUtil::MAX_SIMTIME_S)) return;
+            for (int i = 0; i < n; ++i) if (!NetUtil::ValidTrailerEntry(p->e[i])) return;
+            if (Net::OnTrailers) Net::OnTrailers(p->e, n, (double)p->simTime * 1000.0);
+            break;
+        }
         case PKT_EVENT: {
             if (len < (int)sizeof(EventPacket)) return;
             const EventPacket* p = (const EventPacket*)buf;
@@ -581,6 +591,7 @@ void Net::SetLocalCar(const CarInfo& c) {
 }
 
 void (*Net::OnTraffic)(const TrafficEntry*, int, double) = nullptr;
+void (*Net::OnTrailers)(const TrailerEntry*, int, double) = nullptr;
 double (*Net::LocalClockMs)() = &Net::NowMs;
 void (*Net::OnEvent)(uint32_t, const char*) = nullptr;
 void (*Net::OnRoster)(const RosterPacket&) = nullptr;
@@ -692,6 +703,18 @@ void Net::SendTraffic(const TrafficEntry* e, int count, float simTime) {
     SendRaw(&p, (int)(offsetof(TrafficPacket, e) + count * sizeof(TrafficEntry)));
 }
 
+void Net::SendTrailers(const TrailerEntry* e, int count, float simTime) {
+    if (!g_stats.connected) return;
+    TrailerPacket p{};
+    FillHeader(p.h, PKT_TRAILER);
+    if (count > MAX_TRAILERS_PER_PACKET) count = MAX_TRAILERS_PER_PACKET;
+    if (count < 0 || !e) count = 0;
+    p.count = (uint8_t)count;
+    p.simTime = simTime;
+    memcpy(p.e, e, count * sizeof(TrailerEntry));
+    SendRaw(&p, (int)(offsetof(TrailerPacket, e) + count * sizeof(TrailerEntry)));
+}
+
 double Net::NowMs() {
     static LARGE_INTEGER f{};
     if (!f.QuadPart) QueryPerformanceFrequency(&f);
@@ -793,7 +816,7 @@ void Net::Test_Reset() {
     g_haveOffset = false;
     g_testTickOn = false; g_testTick = 0;
     g_testCapture = nullptr;
-    Net::OnTraffic = nullptr; Net::OnEvent = nullptr; Net::OnRoster = nullptr;
+    Net::OnTraffic = nullptr; Net::OnTrailers = nullptr; Net::OnEvent = nullptr; Net::OnRoster = nullptr;
     Net::OnRacerName = nullptr; Net::OnRestart = nullptr; Net::OnNisSkip = nullptr;
     Net::OnFile = nullptr; Net::OnFileRequest = nullptr; Net::OnNoFile = nullptr;
     Net::OnMilestone = nullptr; g_lastMilestoneId = 0;
