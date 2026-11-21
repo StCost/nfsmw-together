@@ -306,6 +306,8 @@ class LauncherForm : Form {
         int p; if (!int.TryParse(port.Text.Trim(), out p) || p < 1 || p > 65535) p = 47555;
         string exe = Path.Combine(gameDir, "speed.exe").Replace("'", "''");   // PowerShell single-quoted string
         string cmd = "Remove-NetFirewallRule -DisplayName 'NFS MW Together*' -ErrorAction SilentlyContinue; " +
+                     // a dismissed 'allow access?' prompt leaves BLOCK rules for speed.exe, and block beats allow
+                     "Get-NetFirewallApplicationFilter | Where-Object { $_.Program -like '*speed.exe' } | Get-NetFirewallRule | Where-Object { $_.Action -eq 'Block' } | Remove-NetFirewallRule; " +
                      "New-NetFirewallRule -DisplayName 'NFS MW Together (game)' -Direction Inbound -Program '" + exe + "' -Action Allow -Profile Any | Out-Null; " +
                      "New-NetFirewallRule -DisplayName 'NFS MW Together (UDP " + p + ")' -Direction Inbound -Protocol UDP -LocalPort " + p + " -Action Allow -Profile Any | Out-Null";
         try {
