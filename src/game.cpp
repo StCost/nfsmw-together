@@ -235,6 +235,7 @@ namespace {
     DWORD    g_nextSpawnTry = 0;            // backoff between spawn attempts
     void*    g_replacedRacer = nullptr;            // racer built as the peer's car by the factory hook
     bool     g_racerReplacedThisLoad = false;
+    DWORD    g_ghostYieldUntil = 0;            // event start: our copy of their car may be removed for room
     float    g_peerSlot[3] = {};                    // where the race built that racer (its grid slot)
     bool     g_peerSlotValid = false;
     uint32_t g_origRacer[1] = {};
@@ -644,7 +645,9 @@ namespace {
     }
 
     int __fastcall Cache_OnQuery(void*, void*, void* iv, void* /*asking*/) {
-        return (iv && iv == g_ghost) ? 0 /*want*/ : 1 /*don't care*/;
+        // while an event we join builds its racers, the game may take our copy of their car for room
+        bool yield = g_ghostYieldUntil && (int)(GetTickCount() - g_ghostYieldUntil) < 0;
+        return (iv && iv == g_ghost && !yield) ? 0 /*want*/ : 1 /*don't care*/;
     }
 
     uint32_t VehicleKey(void* iv) {
@@ -772,13 +775,17 @@ static void* __cdecl hk_VehicleConstruct(SimParam p) {
         r.name[0] = 0;
     }
     if (replaced && !simable) {
-        LOG("Race: peer car model %08X not loaded - keeping the original AI car", vp->carType);
-        replaced = false;
-        g_racerReplacedThisLoad = false;     // let the next racer try (its model may be loaded)
+        // Their model isn't loaded here (seen when they started the event far away from us). The racer
+        // is built as the game wanted it and still becomes theirs - their name, their progress, driven
+        // by their position - so they are in the standings, only in this AI car's body. (Before, no
+        // racer was theirs: they were missing from the standings and their car was spawned outside.)
+        uint32_t want = vp->carType;
         vp->carType = g_origRacer[0];
         vp->customization = g_origRacerCustom;
         vp->matched = g_origRacerMatched;
         simable = ((Fn)Addr::PVehicleConstruct)(p);
+        if (simable) LOG("Race: the other player's car model %08X isn't loaded here - their racer keeps this AI car's model (%08X)", want, vp->carType);
+        else { replaced = false; g_racerReplacedThisLoad = false; LOG("Race: racer for the other player could not be built (model %08X)", want); }
     }
     if (replaced && simable) {
         void* object = nullptr;
